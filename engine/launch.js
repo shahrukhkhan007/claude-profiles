@@ -1,17 +1,19 @@
 'use strict';
-// Launch an isolated Claude and check whether one is running for a given data dir.
+// Launch a profile and check whether one is running for a given data dir.
 const { spawn, execFile } = require('child_process');
 const platform = require('./platform');
 const store = require('./instances');
 
 function launch(inst) {
-  if (!inst) throw new Error('Unknown instance');
-  const dir = inst.dataDir;
-  const arg = `--user-data-dir=${dir}`;
+  if (!inst) throw new Error('Unknown profile');
+  const arg = `--user-data-dir=${inst.dataDir}`;
   let child;
   if (process.platform === 'darwin') {
-    // -n opens a new instance; base Claude app carries the data dir.
-    child = spawn('open', ['-n', '-a', 'Claude', '--args', arg], { detached: true, stdio: 'ignore' });
+    if (inst.mode === 'custom' && inst.bundlePath) {
+      child = spawn('open', ['-n', inst.bundlePath, '--args', arg], { detached: true, stdio: 'ignore' });
+    } else {
+      child = spawn('open', ['-n', '-a', 'Claude', '--args', arg], { detached: true, stdio: 'ignore' });
+    }
   } else if (process.platform === 'win32') {
     const exe = platform.claudeAppPath();
     if (!exe) throw new Error('Claude.exe not found');
@@ -24,7 +26,6 @@ function launch(inst) {
   return { ok: true };
 }
 
-// Best-effort: is a process running that points at this data dir?
 function isRunning(inst) {
   return new Promise((resolve) => {
     if (!inst) return resolve(false);
