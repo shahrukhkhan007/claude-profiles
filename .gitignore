@@ -1,0 +1,18 @@
+# Node
+node_modules/
+dist/
+dist-electron/
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+/.idea/
+.vscode/
+
+# App runtime data (never commit real instances)
+.claude-instance-manager/
+release/

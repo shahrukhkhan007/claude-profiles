@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # Skip postinstall scripts so CI doesn't download the Electron binary.
+      - run: npm install --no-audit --no-fund --ignore-scripts
+      - name: Syntax-check engine + main
+        run: |
+          node --check engine/index.js
+          node --check engine/platform.js
+          node --check engine/instances.js
+          node --check engine/launch.js
+          node --check electron/main.js
+          node --check electron/preload.js
+      - name: Build renderer
+        run: npm run build

@@ -1,0 +1,65 @@
+:root{
+  --bg:#ffffff; --tint:#faf8f4; --ink:#211e1a; --ink2:#6e6a62; --ink3:#9a9488;
+  --line:#ece7de; --line2:#e0dacf; --accent:#d2694a; --accent2:#b9542f;
+  --green:#33a96f; --grey:#c2bdb3;
+  --sans:"Inter","SF Pro Text",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#1d1b18; --tint:#26221e; --ink:#f2eee7; --ink2:#a49e93; --ink3:#7c7669;
+    --line:#332f29; --line2:#3c372f; --accent:#e08a64; --accent2:#c96c45; --grey:#5a554d;
+    color-scheme: dark;
+  }
+}
+*{box-sizing:border-box}
+html,body,#root{height:100%;margin:0}
+body{font-family:var(--sans);background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased}
+.app{display:flex;flex-direction:column;height:100%}
+.fallback{padding:40px;max-width:60ch;margin:0 auto;line-height:1.6}
+
+.topbar{display:flex;align-items:center;gap:10px;padding:10px 12px;padding-top:28px;
+  border-bottom:1px solid var(--line);background:var(--bg);-webkit-app-region:drag}
+.topbar .tabs,.topbar .btn{-webkit-app-region:no-drag}
+.tabs{display:flex;gap:4px;background:var(--tint);padding:4px;border-radius:10px;border:1px solid var(--line)}
+.tab{font:600 13px var(--sans);color:var(--ink2);padding:6px 13px;border-radius:7px;border:0;background:transparent;cursor:pointer}
+.tab.active{background:var(--bg);color:var(--accent2);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.btn{font:600 13px var(--sans);border-radius:8px;padding:7px 14px;border:1px solid transparent;cursor:pointer}
+.btn.small{padding:5px 11px;font-size:12.5px}
+.btn.primary{background:var(--accent);color:#fff;border-color:var(--accent2)}
+.btn.ghost{background:transparent;color:var(--ink);border-color:var(--line2)}
+.topbar .btn.primary{margin-left:auto}
+
+.addbar{display:flex;gap:10px;align-items:center;padding:10px 12px;border-bottom:1px solid var(--line);background:var(--tint)}
+.addbar input{flex:1;border:1px solid var(--line2);border-radius:8px;padding:8px 11px;font:14px var(--sans);background:var(--bg);color:var(--ink)}
+.swatches{display:flex;gap:7px}
+.sw{width:26px;height:26px;border-radius:7px;border:0;cursor:pointer}
+.sw.sel{box-shadow:0 0 0 2px var(--bg),0 0 0 4px var(--accent)}
+.sw.blue{background:linear-gradient(160deg,#5b8fd4,#3f6fb0)}
+.sw.green{background:linear-gradient(160deg,#4bbd87,#2f9a68)}
+.sw.coral{background:linear-gradient(160deg,#e58666,#cf5f3d)}
+.sw.violet{background:linear-gradient(160deg,#9b7bc4,#7a55a8)}
+.sw.slate{background:linear-gradient(160deg,#8a8f99,#666b75)}
+
+.list{flex:1;overflow:auto;padding:12px;display:flex;flex-direction:column;gap:8px}
+.empty{margin:auto;text-align:center;color:var(--ink2);display:flex;flex-direction:column;gap:12px;align-items:center}
+.card{display:flex;align-items:center;gap:12px;padding:11px 13px;border:1px solid var(--line);border-radius:11px;background:var(--bg)}
+.card.run{box-shadow:inset 3px 0 0 var(--green)}
+.icon{width:40px;height:40px;border-radius:11px;display:grid;place-items:center;color:#fff;font-weight:800;font-size:17px;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.18),0 2px 5px rgba(0,0,0,.14)}
+.icon.blue{background:linear-gradient(160deg,#5b8fd4,#3f6fb0)}
+.icon.green{background:linear-gradient(160deg,#4bbd87,#2f9a68)}
+.icon.coral{background:linear-gradient(160deg,#e58666,#cf5f3d)}
+.icon.violet{background:linear-gradient(160deg,#9b7bc4,#7a55a8)}
+.icon.slate{background:linear-gradient(160deg,#8a8f99,#666b75)}
+.who{flex:1;min-width:0}
+.nm{font-weight:600;font-size:14.5px;display:flex;align-items:center;gap:8px;color:var(--ink)}
+.pill{font:700 10px var(--sans);text-transform:uppercase;letter-spacing:.05em;color:var(--ink2);
+  background:var(--tint);border:1px solid var(--line);padding:2px 7px;border-radius:20px}
+.sub{font-size:12px;color:var(--ink3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.status{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--ink2)}
+.status .dot{width:8px;height:8px;border-radius:50%;background:var(--grey)}
+.status.on{color:var(--green)}.status.on .dot{background:var(--green)}
+.actions{display:flex;gap:7px}
+.statusbar{display:flex;align-items:center;gap:8px;padding:9px 14px;font-size:12.5px;color:var(--ink2);
+  border-top:1px solid var(--line);background:var(--tint)}
+.cd{width:7px;height:7px;border-radius:50%;background:var(--green)}
