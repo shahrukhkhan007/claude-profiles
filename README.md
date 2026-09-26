@@ -7,6 +7,11 @@ Run several separate **Claude Desktop logins** side by side on one machine — l
 browser profiles, but for Claude. Add a profile, give it a name (and an icon),
 and launch it. Your work and personal logins stay signed in at the same time.
 
+Run **multiple Claude Desktop accounts** side by side — work, personal, and
+client logins open at the same time — on **macOS, Windows, and Linux**. It's a
+free, open-source **multi-account manager and profile switcher** for the Claude
+desktop app: no more signing out and back in to change accounts.
+
 Claude Profiles works on your **already-installed** Claude — it never bundles or
 redistributes Anthropic's app, and it never touches your conversations.
 
@@ -22,8 +27,8 @@ just download the installer for your OS.
 
 ### macOS
 
-1. Download **`Claude Profiles-<version>.dmg`** from the
-   [**Releases**](https://github.com/shahrukhkhan007/claude-profiles/releases) page.
+1. Go to the [**Releases**](https://github.com/shahrukhkhan007/claude-profiles/releases/latest) page and download the
+   **`.dmg`** file.
 2. Open the `.dmg` and drag **Claude Profiles** into **Applications**.
 3. The app isn't notarized yet, so the first time you open it macOS will warn that
    it's from an unidentified developer. To allow it: **right-click the app →
@@ -35,16 +40,17 @@ just download the installer for your OS.
 
 ### Windows
 
-1. Download the **`.exe`** installer from [Releases](https://github.com/shahrukhkhan007/claude-profiles/releases) and run it.
+1. Download the **`.exe`** installer from the [latest release](https://github.com/shahrukhkhan007/claude-profiles/releases/latest) and run it.
 2. SmartScreen may warn about an unknown publisher (the build isn't signed yet) —
    click **More info → Run anyway**.
 
 ### Linux
 
-Download from [Releases](https://github.com/shahrukhkhan007/claude-profiles/releases):
+Download the **`.AppImage`** or **`.deb`** from the
+[latest release](https://github.com/shahrukhkhan007/claude-profiles/releases/latest):
 
-- **AppImage** — `chmod +x 'Claude Profiles-<version>.AppImage'` then run it.
-- **.deb** — `sudo dpkg -i 'claude-profiles_<version>_amd64.deb'`.
+- **AppImage** — make it executable (`chmod +x <file>`) and run it.
+- **.deb** — install it with `sudo dpkg -i <file>`.
 
 > **No prebuilt release yet?** Until installers are published on the Releases
 > page, you can build your own in one command — see
@@ -67,44 +73,6 @@ there are no confusing toggles:
 Add a profile with **+ Add**, pick a colour or an image, and **Launch**. Each
 profile keeps a completely separate login, history, and settings.
 
----
-
-## Build the installer yourself
-
-If you'd rather build the DMG / installer from source (or there's no release for
-your platform yet):
-
-**Prerequisites:** [Node.js 20+](https://nodejs.org) and
-[pnpm 10](https://pnpm.io/installation) (`npm install -g pnpm`).
-
-```bash
-git clone https://github.com/shahrukhkhan007/claude-profiles.git
-cd claude-profiles
-pnpm install
-
-pnpm dist:mac      # → release/Claude Profiles-<version>.dmg
-pnpm dist:win      # → release/  (.exe)   — build on Windows
-pnpm dist:linux    # → release/  (.AppImage, .deb)
-```
-
-The finished installer lands in the **`release/`** folder. On macOS, an unsigned
-local build skips code signing automatically; if you hit a signing error, prefix
-the command with `CSC_IDENTITY_AUTO_DISCOVERY=false`.
-
----
-
-## Develop
-
-To run the app from source with hot reload:
-
-```bash
-pnpm install
-pnpm dev          # Vite + Electron with live reload
-```
-
-Other scripts: `pnpm build` (bundle the UI), `pnpm test` (unit tests),
-`pnpm lint`, `pnpm e2e` (Playwright).
-
 ## How it works
 
 Each profile is just Claude launched with its own `--user-data-dir`, so it keeps
@@ -112,14 +80,16 @@ a separate login, history, and settings. The app records your profiles in
 `~/.claude-profiles/profiles.json` and reads live status (running / stopped)
 from the OS. It never touches your conversations or your main Claude data.
 
-See [`docs/DESIGN.md`](docs/DESIGN.md) for the full design and
-[`docs/TECHNICAL.md`](docs/TECHNICAL.md) for the per-OS implementation details.
-
 ## A note on safety
 
 Claude Profiles operates only on **your already-installed Claude** — it never
 bundles or redistributes Anthropic's app. It reads your local files and creates
 separate data folders; it never modifies your conversations.
+
+## Contributing
+
+Claude Profiles is open source (MIT). If you'd like to build it from source,
+run it in development, or contribute changes, see **[CONTRIBUTING.md](CONTRIBUTING.md)**.
 
 ## License
 
