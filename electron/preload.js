@@ -5,6 +5,8 @@ contextBridge.exposeInMainWorld('api', {
   envInfo: () => ipcRenderer.invoke('env:info'),
   list: () => ipcRenderer.invoke('instances:list'),
   add: (data) => ipcRenderer.invoke('instances:add', data),
+  update: (id, patch) => ipcRenderer.invoke('instances:update', { id, patch }),
+  logs: () => ipcRenderer.invoke('app:logs'),
   remove: (id) => ipcRenderer.invoke('instances:remove', id),
   launch: (id) => ipcRenderer.invoke('instances:launch', id),
   rebuild: (id) => ipcRenderer.invoke('instances:rebuild', id),
@@ -15,4 +17,6 @@ contextBridge.exposeInMainWorld('api', {
   stop: (id) => ipcRenderer.invoke('instances:stop', id),
   pickIcon: () => ipcRenderer.invoke('dialog:pickIcon'),
   setGlass: (on) => ipcRenderer.invoke('app:setGlass', on),
+  appVersion: () => ipcRenderer.invoke('app:version'),
+  openExternal: (url) => ipcRenderer.invoke('app:openExternal', url),
 });

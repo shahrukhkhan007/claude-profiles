@@ -4,6 +4,7 @@ const { execFileSync } = require('child_process');
 const platform = require('./platform');
 
 function pidFor(inst) {
+  if (process.env.CP_TEST) return null;
   try {
     if (process.platform === 'win32') {
       const out = execFileSync('powershell', ['-NoProfile', '-Command',
@@ -67,6 +68,7 @@ function reveal(inst) {
 
 // Quit this profile's running instance. The profile (its data dir) stays; it can be relaunched.
 function stop(inst) {
+  if (process.env.CP_TEST) return { ok: true, test: true };
   try {
     if (process.platform === 'win32') {
       execFileSync('powershell', ['-NoProfile', '-Command',

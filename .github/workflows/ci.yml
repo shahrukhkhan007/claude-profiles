@@ -9,6 +9,28 @@ permissions:
   contents: read
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 10 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: pnpm }
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - run: pnpm lint
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 10 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: pnpm }
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - run: pnpm test
+
   build:
     strategy:
       fail-fast: false
@@ -17,18 +39,21 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 10 }
       - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      # Skip postinstall scripts so CI doesn't download the Electron binary.
-      - run: npm install --no-audit --no-fund --ignore-scripts
-      - name: Syntax-check engine + main
-        run: |
-          node --check engine/index.js
-          node --check engine/platform.js
-          node --check engine/instances.js
-          node --check engine/launch.js
-          node --check electron/main.js
-          node --check electron/preload.js
-      - name: Build renderer
-        run: npm run build
+        with: { node-version: 20, cache: pnpm }
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - run: pnpm build
+
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 10 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: xvfb-run -a pnpm e2e

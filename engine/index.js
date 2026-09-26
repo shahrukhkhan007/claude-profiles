@@ -45,6 +45,15 @@ function addInstance(data) {
   return inst;
 }
 
+function updateInstance(id, patch) {
+  const updated = store.update(id, patch || {});
+  // If a custom profile's icon changed, re-apply it to the Dock clone.
+  if (updated && updated.mode === 'custom' && patch && (patch.iconData || patch.iconPath)) {
+    try { custom.applyIcon(updated); } catch (_) {}
+  }
+  return updated;
+}
+
 function removeInstance(id) {
   const inst = store.get(id);
   if (inst && inst.mode === 'custom') { try { custom.remove(inst); } catch (_) {} }
@@ -81,6 +90,8 @@ function rebuild(id) {
 }
 
 module.exports = {
+  updateAvailable,
+  updateInstance,
   envInfo, listInstances, addInstance, removeInstance,
   launch, status, getDetail, bringToFront, reveal, stop, rebuild,
 };

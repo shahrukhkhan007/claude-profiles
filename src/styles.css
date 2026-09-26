@@ -34,33 +34,49 @@
   color-scheme:dark;
 }
 
-:root{ --sans:"Inter","SF Pro Text",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; --blur:saturate(180%) blur(24px); }
+:root{ --sans:"Inter","SF Pro Text",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; --blur:saturate(150%) blur(20px); }
 
 *{box-sizing:border-box}
 html,body,#root{height:100%;margin:0}
 body{font-family:var(--sans);background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased}
 
-/* glass mode: translucent surfaces + let window vibrancy show */
-:root.glass body{background:transparent}
-:root.glass .topbar,:root.glass .statusbar,:root.glass .addbar,:root.glass .card,:root.glass .sheet2,:root.glass .modal{
-  background:color-mix(in srgb, var(--panel) 72%, transparent);
+/* glass mode: a themed translucent layer over the window vibrancy.
+   body stays tinted with the theme bg (never fully transparent) so the dark
+   window backgroundColor can't bleed through and read as black in Light. */
+:root.glass body{background:color-mix(in srgb, var(--bg) 70%, transparent)}
+:root.glass .topbar,:root.glass .statusbar,:root.glass .addbar,:root.glass .card,:root.glass .sheet2,:root.glass .modal,:root.glass .sect,:root.glass .menu{
+  background:color-mix(in srgb, var(--panel) 88%, transparent);
   -webkit-backdrop-filter:var(--blur); backdrop-filter:var(--blur);
 }
 
 .app{display:flex;flex-direction:column;height:100%}
 .fallback{padding:40px;max-width:60ch;margin:0 auto;line-height:1.6;color:var(--ink)}
 
-.topbar{display:flex;align-items:center;gap:10px;padding:10px 14px;padding-top:30px;
+.topbar{display:flex;align-items:center;gap:10px;padding:10px 12px;padding-top:30px;
   -webkit-app-region:drag;border-bottom:1px solid var(--line);background:var(--bar)}
-.app.is-mac .topbar{padding-left:86px}
+.app.is-mac .topbar{padding-top:38px;padding-left:12px}
 .topbar .tabs,.topbar .btn,.topbar .icon-btn{-webkit-app-region:no-drag}
 .tabs{display:flex;gap:3px;background:var(--hover);padding:3px;border-radius:11px}
-.tab{font:600 13px var(--sans);color:var(--ink2);padding:6px 14px;border-radius:8px;border:0;background:transparent;cursor:pointer}
+.tab{font:600 13px var(--sans);color:var(--ink2);padding:6px 14px;border-radius:8px;border:0;background:transparent;cursor:pointer;min-width:108px;text-align:center}
 .tab.active{background:var(--panel);color:var(--accent2);box-shadow:0 1px 2px rgba(0,0,0,.12)}
 .spacer{flex:1}
 .icon-btn{width:32px;height:32px;border-radius:9px;border:1px solid var(--line);background:var(--card);
   color:var(--ink2);display:grid;place-items:center;cursor:pointer}
 .icon-btn:hover{color:var(--ink)}
+
+/* kebab dropdown (Settings / About) */
+.menuwrap{position:relative;-webkit-app-region:no-drag}
+.menu-scrim{position:fixed;inset:0;z-index:30}
+.menu{position:absolute;top:calc(100% + 7px);right:0;z-index:31;min-width:168px;
+  background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:5px;
+  box-shadow:0 18px 44px -14px rgba(0,0,0,.5);display:flex;flex-direction:column;gap:2px}
+.menu button{font:600 13px var(--sans);text-align:left;color:var(--ink);background:transparent;
+  border:0;border-radius:7px;padding:8px 11px;cursor:pointer}
+.menu button:hover{background:var(--hover)}
+.menu::before{content:"";position:absolute;top:-6px;right:11px;width:12px;height:12px;
+  background:var(--panel);border-left:1px solid var(--line);border-top:1px solid var(--line);
+  border-radius:3px 0 0 0;transform:rotate(45deg)}
+:root.glass .menu::before{background:color-mix(in srgb, var(--panel) 88%, transparent)}
 
 .btn{font:600 13px var(--sans);border-radius:9px;padding:7px 14px;border:1px solid transparent;cursor:pointer;transition:filter .12s}
 .btn:hover{filter:brightness(1.06)}
@@ -87,7 +103,13 @@ body{font-family:var(--sans);background:var(--bg);color:var(--ink);-webkit-font-
 .empty{margin:auto;text-align:center;color:var(--ink2);display:flex;flex-direction:column;gap:12px;align-items:center}
 .card{display:flex;align-items:center;gap:12px;padding:11px 13px;border:1px solid var(--line);border-radius:13px;background:var(--card);cursor:pointer;transition:background .12s}
 .card:hover{background:var(--hover)}
-.card.run{box-shadow:inset 3px 0 0 var(--green)}
+/* running state: no hard sidebar — a soft live pulse on the status dot instead */
+.status.on .dot{position:relative;box-shadow:0 0 0 0 var(--green)}
+.status.on .dot::after{content:"";position:absolute;left:50%;top:50%;width:8px;height:8px;
+  margin:-4px 0 0 -4px;border-radius:50%;background:var(--green);
+  animation:cp-pulse 1.6s cubic-bezier(.35,0,.25,1) infinite}
+@keyframes cp-pulse{0%{transform:scale(1);opacity:.55}70%{transform:scale(3.4);opacity:0}100%{opacity:0}}
+@media (prefers-reduced-motion:reduce){.status.on .dot::after{animation:none}}
 .icon{width:40px;height:40px;border-radius:11px;display:grid;place-items:center;color:#fff;font-weight:800;font-size:17px;overflow:hidden;
   box-shadow:inset 0 0 0 1px rgba(255,255,255,.2),0 2px 6px rgba(0,0,0,.18)}
 .icon.lg{width:52px;height:52px;border-radius:14px;font-size:22px}
@@ -120,6 +142,11 @@ body{font-family:var(--sans);background:var(--bg);color:var(--ink);-webkit-font-
 .d-top{display:flex;align-items:center;gap:13px;padding:18px}
 .d-name{font-size:18px;font-weight:700;display:flex;align-items:center;gap:8px;color:var(--ink)}
 .d-top .x{margin-left:auto;align-self:flex-start;border:0;background:transparent;color:var(--ink3);font-size:15px;cursor:pointer}
+.d-top-actions{margin-left:auto;align-self:flex-start;display:flex;align-items:center;gap:8px}
+.d-top-actions .x{margin-left:0}
+.err-banner{margin:0 0 2px;padding:10px 12px;border-radius:10px;font-size:12.5px;line-height:1.45;
+  color:var(--danger);background:color-mix(in srgb,var(--danger) 12%,transparent);
+  border:1px solid color-mix(in srgb,var(--danger) 30%,transparent);word-break:break-word}
 .mgrid{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line);border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
 .kv{background:var(--panel);padding:11px 16px;display:flex;flex-direction:column;gap:3px;min-width:0}
 .kv.full{grid-column:1/-1}
@@ -144,3 +171,56 @@ body{font-family:var(--sans);background:var(--bg);color:var(--ink);-webkit-font-
 .toggle.on{background:var(--accent)}
 .toggle .knob{position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;transition:left .15s}
 .toggle.on .knob{left:21px}
+
+/* settings full page + about */
+.pagetitle{font-size:14px;font-weight:700;color:var(--ink);-webkit-app-region:no-drag}
+.icon-btn.back{font-size:22px;font-weight:600;line-height:1;padding-bottom:2px}
+.page{flex:1;overflow:auto;padding:12px;display:flex;flex-direction:column;gap:12px;align-items:flex-start}
+.page .sect{width:100%;max-width:560px}
+.sect{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px}
+.sect h3{margin:0 0 14px;font-size:11.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--ink3);font-weight:800}
+.sect .set-row + .set-row{margin-top:14px;padding-top:14px;border-top:1px solid var(--line)}
+.about-hero{display:flex;align-items:center;gap:14px;margin-bottom:4px}
+.about-name{font-size:18px;font-weight:800;color:var(--ink);letter-spacing:-.01em}
+.about-ver{font-size:12px;color:var(--ink3);margin-top:3px}
+.about-p{font-size:13.5px;color:var(--ink2);line-height:1.6;margin:12px 0 0}
+.about-p b{color:var(--ink)}
+.about-tags{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0 0}
+.chiptag{font-size:11px;font-weight:700;color:var(--accent2);background:var(--accent-soft);border-radius:20px;padding:4px 10px}
+.about-links{display:flex;gap:9px;margin-top:16px;flex-wrap:wrap}
+
+/* custom color swatch + image preview + edit form */
+.sw-pick{width:26px;height:26px;border-radius:8px;border:1px solid var(--line);padding:0;cursor:pointer;background:none;-webkit-appearance:none;appearance:none}
+.sw-pick::-webkit-color-swatch-wrapper{padding:0}
+.sw-pick::-webkit-color-swatch{border:none;border-radius:7px}
+.sw-pick.sel{box-shadow:0 0 0 2px var(--panel),0 0 0 4px var(--accent)}
+.icon.sm{width:30px;height:30px;border-radius:8px;font-size:13px}
+.edit{padding:14px 16px 16px;display:flex;flex-direction:column;gap:12px}
+.ed-input{border:1px solid var(--line);border-radius:9px;padding:9px 12px;font:14px var(--sans);background:var(--panel);color:var(--ink)}
+.ed-input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.edit .swatches{padding:2px 0}
+
+/* new-profile modal */
+.add-modal{max-width:430px}
+.add-modal .modal-b{padding:18px 20px}
+.preview-row{display:flex;align-items:center;gap:14px}
+.preview-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.preview-hint{font-size:11.5px;color:var(--ink3);width:100%}
+.fld{display:flex;flex-direction:column;gap:8px}
+.fld>span{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--ink3)}
+.fld input{border:1px solid var(--line);border-radius:9px;padding:10px 12px;font:14px var(--sans);background:var(--panel);color:var(--ink)}
+.fld input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.fld .swatches{gap:9px;align-items:center}
+.fld .sw,.fld .sw-pick{width:30px;height:30px}
+.fld .sw-pick{position:relative}
+
+/* modal avatar: meaningful photo placeholder + processing ring */
+.avatar-wrap{position:relative;width:52px;height:52px;flex:0 0 auto;cursor:pointer}
+.icon.lg.placeholder{background:var(--hover);color:var(--ink3);border:1.5px dashed var(--line);box-shadow:none}
+.avatar-wrap:hover .icon.placeholder{color:var(--ink2);border-color:var(--ink3)}
+.avatar-spin{position:absolute;inset:-3px;width:calc(100% + 6px);height:calc(100% + 6px);pointer-events:none;overflow:visible}
+.avatar-spin rect{fill:none;stroke-width:2.5}
+.avatar-spin .track{stroke:var(--accent-soft)}
+.avatar-spin .dash{stroke:var(--accent);stroke-linecap:round;stroke-dasharray:26 74;animation:cp-dash 1.05s linear infinite}
+@keyframes cp-dash{to{stroke-dashoffset:-100}}
+@media (prefers-reduced-motion:reduce){.avatar-spin .dash{animation-duration:2.4s}}

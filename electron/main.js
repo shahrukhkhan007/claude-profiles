@@ -1,7 +1,8 @@
 'use strict';
-const { app, BrowserWindow, ipcMain, dialog, Tray, Menu, nativeImage } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, Tray, Menu, nativeImage, shell } = require('electron');
 const path = require('path');
 const engine = require('../engine');
+const cplog = require('../engine/log');
 
 const DEV_URL = 'http://127.0.0.1:5173';
 
@@ -24,7 +25,7 @@ function createWindow() {
       nodeIntegration: false,
     },
   });
-  if (!app.isPackaged) win.loadURL(DEV_URL);
+  if (!app.isPackaged && !process.env.CP_E2E) win.loadURL(DEV_URL);
   else win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
 }
 
@@ -72,17 +73,32 @@ function registerIpc() {
   ipcMain.handle('instances:reveal', (_e, id) => engine.reveal(id));
   ipcMain.handle('instances:stop', async (_e, id) => { const r = engine.stop(id); refreshTray(); return r; });
   ipcMain.handle('dialog:pickIcon', async () => {
-    const r = await dialog.showOpenDialog(win || undefined, {
-      title: 'Choose an icon',
+    const parent = win && !win.isDestroyed() ? win : undefined;
+    const r = await dialog.showOpenDialog(parent, {
+      title: 'Choose an image',
       properties: ['openFile'],
-      filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'icns', 'ico'] }],
+      filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'icns', 'ico'] }],
     });
-    if (r.canceled || !r.filePaths[0]) return null;
+    if (r.canceled || !r.filePaths || !r.filePaths[0]) return null;
     const p = r.filePaths[0];
     let dataUrl = null;
-    try { dataUrl = nativeImage.createFromPath(p).resize({ width: 96 }).toDataURL(); } catch (_) {}
+    try {
+      const img = nativeImage.createFromPath(p);
+      if (img && !img.isEmpty()) dataUrl = img.resize({ width: 128, quality: 'good' }).toDataURL();
+    } catch (_) {}
+    if (!dataUrl) {
+      try {
+        const ext = path.extname(p).slice(1).toLowerCase();
+        const mime = ext === 'jpg' ? 'jpeg' : (ext || 'png');
+        dataUrl = 'data:image/' + mime + ';base64,' + require('fs').readFileSync(p).toString('base64');
+      } catch (_) {}
+    }
     return { path: p, dataUrl };
   });
+  ipcMain.handle('instances:update', (_e, arg) => { const r = engine.updateInstance(arg.id, arg.patch); refreshTray(); return r; });
+  ipcMain.handle('app:version', () => app.getVersion());
+  ipcMain.handle('app:logs', () => ({ path: cplog.LOG_FILE, text: cplog.tail(400) }));
+  ipcMain.handle('app:openExternal', (_e, url) => { try { if (/^https?:\/\//.test(String(url))) shell.openExternal(url); } catch (_) {} return { ok: true }; });
   ipcMain.handle('app:setGlass', (_e, on) => {
     if (win && !win.isDestroyed()) { try { win.setVibrancy(on ? 'under-window' : null); } catch (_) {} }
     return { ok: true };
@@ -90,11 +106,17 @@ function registerIpc() {
 }
 
 app.whenReady().then(() => {
+  cplog.log('Claude Profiles started — logs at', cplog.LOG_FILE);
   registerIpc();
   createWindow();
-  createTray();
+  if (app.isPackaged) createTray(); // no tray in dev — keeps restarts clean
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
 
 // Keep running in the menu bar when the window is closed.
-app.on('window-all-closed', () => { /* stay alive for the tray */ });
+app.on('window-all-closed', () => {
+  // In production the app lives on in the menu bar. In dev, quit fully so the
+  // next `npm run dev` reloads the main process (main.js + engine/*), which
+  // otherwise never hot-reloads — only the renderer does.
+  if (!app.isPackaged) app.quit();
+});

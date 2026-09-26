@@ -6,6 +6,7 @@ const path = require('path');
 const fs = require('fs');
 const { execFileSync } = require('child_process');
 const platform = require('./platform');
+const { log } = require('./log');
 
 const HOME = os.homedir();
 
@@ -15,6 +16,20 @@ function slug(name) {
 
 function run(cmd, args) {
   return execFileSync(cmd, args, { encoding: 'utf8' });
+}
+
+// Run a command, logging it and its stderr. Returns { ok, out, err, code }.
+function runLogged(cmd, args) {
+  log('run:', cmd, (args || []).join(' '));
+  try {
+    const out = execFileSync(cmd, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    return { ok: true, out: out || '', err: '', code: 0 };
+  } catch (e) {
+    const err = (e && (e.stderr || e.message)) ? String(e.stderr || e.message) : String(e);
+    const code = e && typeof e.status === 'number' ? e.status : -1;
+    log('  ! failed (code ' + code + '):', err.trim().slice(0, 800));
+    return { ok: false, out: e && e.stdout ? String(e.stdout) : '', err, code };
+  }
 }
 
 /* ---------------- macOS ---------------- */
@@ -46,27 +61,68 @@ function macApplyIcon(bundlePath, iconPath) {
   run('/usr/libexec/PlistBuddy', ['-c', 'Set :CFBundleIconFile AppIcon', path.join(bundlePath, 'Contents', 'Info.plist')]);
 }
 
+// Ad-hoc re-sign a modified Electron clone. A plain `codesign --sign -` strips
+// the hardened-runtime entitlements the original app carried, including the JIT
+// ones V8/Electron require — without them the clone traps at launch. So we sign
+// with an explicit entitlements file that restores JIT and disables library
+// validation (nested code is now ad-hoc, no team to validate against).
+function macSign(bundlePath) {
+  const ent = path.join(os.tmpdir(), `cp-ent-${Date.now()}.plist`);
+  fs.writeFileSync(ent, [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">',
+    '<plist version="1.0"><dict>',
+    '  <key>com.apple.security.cs.allow-jit</key><true/>',
+    '  <key>com.apple.security.cs.allow-unsigned-executable-memory</key><true/>',
+    '  <key>com.apple.security.cs.disable-library-validation</key><true/>',
+    '  <key>com.apple.security.cs.allow-dyld-environment-variables</key><true/>',
+    '</dict></plist>',
+    '',
+  ].join('\n'));
+  log('signing clone:', bundlePath);
+  let r;
+  try {
+    r = runLogged('codesign', ['--force', '--deep', '--sign', '-', '--options', 'runtime',
+      '--entitlements', ent, '--timestamp=none', bundlePath]);
+  } finally {
+    try { fs.unlinkSync(ent); } catch (_) {}
+  }
+  if (!r.ok) throw new Error('codesign failed: ' + r.err.trim().slice(0, 400));
+  // Verify the result so signing problems surface at build time, not launch time.
+  const v = runLogged('codesign', ['--verify', '--deep', '--strict', '--verbose=2', bundlePath]);
+  log('codesign --verify:', v.ok ? 'PASS' : 'FAIL ' + v.err.trim().slice(0, 400));
+  return { verified: v.ok, verifyError: v.ok ? null : v.err.trim().slice(0, 400) };
+}
+
 function macCreate(inst) {
   const app = platform.claudeAppPath();
   if (!app) throw new Error('Claude.app not found');
   const bundlePath = macBundlePath(inst.name);
+  log('macCreate:', inst.name, '->', bundlePath, '(from', app + ')');
   try { run('rm', ['-rf', bundlePath]); } catch (_) {}
-  run('cp', ['-R', app, bundlePath]);
+  const cp = runLogged('cp', ['-R', app, bundlePath]);
+  if (!cp.ok) throw new Error('cp failed: ' + cp.err.trim().slice(0, 300));
 
   const plist = path.join(bundlePath, 'Contents', 'Info.plist');
   const bundleId = `com.anthropic.claude.${slug(inst.name).toLowerCase()}`;
-  try { run('/usr/libexec/PlistBuddy', ['-c', `Set :CFBundleIdentifier ${bundleId}`, plist]); } catch (_) {}
-  try { run('/usr/libexec/PlistBuddy', ['-c', `Set :CFBundleName Claude ${inst.name}`, plist]); } catch (_) {}
+  runLogged('/usr/libexec/PlistBuddy', ['-c', `Set :CFBundleIdentifier ${bundleId}`, plist]);
+  // IMPORTANT: do NOT change CFBundleName — Electron builds the Helper app path
+  // from it ("<CFBundleName> Helper.app"), so renaming it makes the clone fatal
+  // with "Unable to find helper app". Use CFBundleDisplayName for the Dock label.
+  const disp = `Claude ${inst.name}`;
+  const setDisp = runLogged('/usr/libexec/PlistBuddy', ['-c', `Set :CFBundleDisplayName ${disp}`, plist]);
+  if (!setDisp.ok) runLogged('/usr/libexec/PlistBuddy', ['-c', `Add :CFBundleDisplayName string ${disp}`, plist]);
 
-  try { macApplyIcon(bundlePath, inst.iconPath); } catch (_) {}
-  // Ad-hoc re-sign so Gatekeeper is less noisy (best-effort).
-  try { run('codesign', ['--force', '--deep', '--sign', '-', bundlePath]); } catch (_) {}
+  try { macApplyIcon(bundlePath, inst.iconPath); log('icon applied'); } catch (e) { log('icon apply failed:', String(e).slice(0, 200)); }
+  // Re-sign, preserving the JIT entitlements Electron needs (see macSign).
+  const sign = macSign(bundlePath);
   // Register the clone with Launch Services so the Dock/Finder see it.
-  try {
-    run('/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister', ['-f', bundlePath]);
-  } catch (_) {}
+  runLogged('/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister', ['-f', bundlePath]);
 
-  return { bundlePath, bundleId, claudeVersionAtBuild: platform.claudeVersion() };
+  log('macCreate done:', bundlePath, 'verified=', sign && sign.verified);
+  const out = { bundlePath, bundleId, claudeVersionAtBuild: platform.claudeVersion() };
+  if (sign && sign.verified === false) out.buildError = 'Signature verify failed: ' + (sign.verifyError || 'unknown');
+  return out;
 }
 
 function macRemove(inst) {
@@ -122,15 +178,35 @@ function linuxRemove(inst) {
   if (inst.launcherPath && fs.existsSync(inst.launcherPath)) fs.rmSync(inst.launcherPath, { force: true });
 }
 
+// Re-apply just the Dock icon to an existing macOS clone (used when a custom
+// profile's image is edited) without re-cloning the whole app.
+function macApplyIconOnly(inst) {
+  if (!inst.bundlePath || !fs.existsSync(inst.bundlePath) || !inst.iconPath) return { ok: false };
+  macApplyIcon(inst.bundlePath, inst.iconPath);
+  macSign(inst.bundlePath);
+  try {
+    run('/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister', ['-f', inst.bundlePath]);
+  } catch (_) {}
+  try { run('touch', [inst.bundlePath]); } catch (_) {}
+  return { ok: true };
+}
+
+function applyIcon(inst) {
+  if (process.env.CP_TEST || process.platform !== 'darwin') return { ok: false };
+  try { return macApplyIconOnly(inst); } catch (_) { return { ok: false }; }
+}
+
 /* ---------------- dispatch ---------------- */
 
 function create(inst) {
+  if (process.env.CP_TEST) return { bundlePath: require('path').join(require('os').tmpdir(), `Claude ${inst.name}.app`), bundleId: 'test', claudeVersionAtBuild: platform.claudeVersion() };
   if (process.platform === 'darwin') return macCreate(inst);
   if (process.platform === 'win32') return winCreate(inst);
   return linuxCreate(inst);
 }
 
 function remove(inst) {
+  if (process.env.CP_TEST) return { ok: true };
   if (process.platform === 'darwin') return macRemove(inst);
   if (process.platform === 'win32') return winRemove(inst);
   return linuxRemove(inst);
@@ -142,4 +218,4 @@ function rebuild(inst) {
   return { ...macCreate(inst), rebuilt: true };
 }
 
-module.exports = { create, remove, rebuild, slug };
+module.exports = { create, remove, rebuild, applyIcon, slug };
