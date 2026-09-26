@@ -2,7 +2,7 @@
   "name": "claude-profiles",
   "version": "0.1.0",
   "private": true,
-  "description": "Run several separate Claude Desktop logins side by side on one machine — one clean app, cross-platform (macOS, Windows, Linux).",
+  "description": "Run several separate Claude Desktop logins side by side on one machine \u2014 one clean app, cross-platform (macOS, Windows, Linux).",
   "author": "Shah Rukh Khan",
   "license": "MIT",
   "main": "electron/main.js",
@@ -62,19 +62,22 @@
       "target": [
         "dmg"
       ],
-      "category": "public.app-category.utilities"
+      "category": "public.app-category.utilities",
+      "icon": "build/icon.png"
     },
     "win": {
       "target": [
         "nsis"
-      ]
+      ],
+      "icon": "build/icon.png"
     },
     "linux": {
       "target": [
         "AppImage",
         "deb"
       ],
-      "category": "Utility"
+      "category": "Utility",
+      "icon": "build/icon.png"
     }
   }
 }

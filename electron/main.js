@@ -5,6 +5,7 @@ const engine = require('../engine');
 const cplog = require('../engine/log');
 
 const DEV_URL = 'http://127.0.0.1:5173';
+const APP_ICON = path.join(__dirname, '..', 'build', 'icon.png');
 
 // Small monochrome menu-bar glyph (template image adapts to light/dark).
 const TRAY_ICON =
@@ -19,6 +20,7 @@ function createWindow() {
     width: 820, height: 640, minWidth: 660, minHeight: 480,
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     backgroundColor: '#1e1e20',
+    icon: APP_ICON,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -107,6 +109,7 @@ function registerIpc() {
 
 app.whenReady().then(() => {
   cplog.log('Claude Profiles started — logs at', cplog.LOG_FILE);
+  try { if (process.platform === 'darwin' && app.dock) app.dock.setIcon(nativeImage.createFromPath(APP_ICON)); } catch (_) {}
   registerIpc();
   createWindow();
   if (app.isPackaged) createTray(); // no tray in dev — keeps restarts clean
