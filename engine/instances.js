@@ -8,6 +8,22 @@ const crypto = require('crypto');
 const HOME = os.homedir();
 const CONFIG_DIR = path.join(HOME, '.claude-profiles');
 const STORE = path.join(CONFIG_DIR, 'profiles.json');
+const ICON_DIR = path.join(CONFIG_DIR, 'icons');
+
+// Persist a picked image (data URL) to a stable file we own, so the card and
+// any later custom rebuild keep working even if the original file is moved.
+function persistIcon(id, iconData) {
+  if (!iconData || typeof iconData !== 'string') return null;
+  const m = iconData.match(/^data:image\/([A-Za-z0-9.+-]+);base64,(.+)$/);
+  if (!m) return null;
+  try {
+    fs.mkdirSync(ICON_DIR, { recursive: true });
+    const ext = m[1].toLowerCase() === 'jpeg' ? 'jpg' : m[1].toLowerCase();
+    const file = path.join(ICON_DIR, `${id}.${ext}`);
+    fs.writeFileSync(file, Buffer.from(m[2], 'base64'));
+    return file;
+  } catch (_) { return null; }
+}
 
 function ensureDir() { fs.mkdirSync(CONFIG_DIR, { recursive: true }); }
 
@@ -39,16 +55,19 @@ function dataDirFor(name) {
 function list() { return readAll(); }
 function get(id) { return readAll().find((i) => i.id === id) || null; }
 
-function add({ name, mode = 'simple', color = 'blue', iconPath = null }) {
+function add({ name, mode = 'simple', color = 'blue', iconPath = null, iconData = null }) {
   const instances = readAll();
   const dataDir = dataDirFor(name);
   fs.mkdirSync(dataDir, { recursive: true });
+  const id = crypto.randomBytes(4).toString('hex');
+  const stableIcon = persistIcon(id, iconData);
   const inst = {
-    id: crypto.randomBytes(4).toString('hex'),
+    id,
     name: String(name).trim(),
     mode,                 // 'simple' | 'custom'
     color,
-    iconPath,
+    iconData: iconData || null,      // shown on the card
+    iconPath: stableIcon || iconPath, // durable source for the custom .icns
     dataDir,
     bundlePath: null,     // set in Phase 2 for macOS custom clones
     createdAt: new Date().toISOString(),
@@ -64,7 +83,9 @@ function update(id, patch) {
   const instances = readAll();
   const idx = instances.findIndex((i) => i.id === id);
   if (idx === -1) return null;
-  instances[idx] = { ...instances[idx], ...patch };
+  const p = { ...(patch || {}) };
+  if (p.iconData) { const f = persistIcon(id, p.iconData); if (f) p.iconPath = f; }
+  instances[idx] = { ...instances[idx], ...p };
   writeAll(instances);
   return instances[idx];
 }
