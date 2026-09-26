@@ -17,8 +17,9 @@ test('boots, adds a profile, opens detail, removes it', async () => {
   await expect(win.locator('.topbar')).toBeVisible();
 
   await win.getByRole('button', { name: '+ Add', exact: true }).click();
-  await win.locator('.addbar input').fill('E2E Test');
-  await win.getByRole('button', { name: 'Create' }).click();
+  await expect(win.locator('.add-modal')).toBeVisible();
+  await win.getByPlaceholder('e.g. Work').fill('E2E Test');
+  await win.getByRole('button', { name: 'Create profile' }).click();
 
   const card = win.locator('.card', { hasText: 'E2E Test' });
   await expect(card).toBeVisible();
