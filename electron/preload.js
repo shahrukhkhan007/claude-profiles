@@ -12,5 +12,7 @@ contextBridge.exposeInMainWorld('api', {
   detail: (id) => ipcRenderer.invoke('instances:detail', id),
   bringToFront: (id) => ipcRenderer.invoke('instances:front', id),
   reveal: (id) => ipcRenderer.invoke('instances:reveal', id),
+  stop: (id) => ipcRenderer.invoke('instances:stop', id),
   pickIcon: () => ipcRenderer.invoke('dialog:pickIcon'),
+  setGlass: (on) => ipcRenderer.invoke('app:setGlass', on),
 });

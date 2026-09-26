@@ -1,11 +1,15 @@
 'use strict';
-// Launch a profile and check whether one is running for a given data dir.
+// Launch a profile — or focus it if it's already running (never duplicate).
 const { spawn, execFile } = require('child_process');
 const platform = require('./platform');
 const store = require('./instances');
+const info = require('./detail');
 
 function launch(inst) {
   if (!inst) throw new Error('Unknown profile');
+  // Already running for this data dir? Just bring it to the front.
+  if (info.pidFor(inst)) return info.bringToFront(inst);
+
   const arg = `--user-data-dir=${inst.dataDir}`;
   let child;
   if (process.platform === 'darwin') {
@@ -23,7 +27,7 @@ function launch(inst) {
   }
   child.unref();
   store.update(inst.id, { lastLaunchedAt: new Date().toISOString(), launches: (inst.launches || 0) + 1 });
-  return { ok: true };
+  return { ok: true, launched: true };
 }
 
 function isRunning(inst) {

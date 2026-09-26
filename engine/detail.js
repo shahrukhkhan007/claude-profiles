@@ -1,5 +1,5 @@
 'use strict';
-// Live per-profile info: pid, uptime, memory; plus bring-to-front and reveal.
+// Live per-profile info + focus/reveal/stop for a specific instance.
 const { execFileSync } = require('child_process');
 const platform = require('./platform');
 
@@ -41,16 +41,18 @@ function detail(inst) {
   return { ...inst, running: !!pid, pid, uptime: stats.uptime, memoryMB: stats.memoryMB, claudeVersion: platform.claudeVersion() };
 }
 
+// Focus THIS profile's running instance (by pid), not a random Claude window.
 function bringToFront(inst) {
+  const pid = pidFor(inst);
   try {
     if (process.platform === 'darwin') {
-      if (inst.mode === 'custom' && inst.bundlePath) execFileSync('open', ['-a', inst.bundlePath]);
-      else execFileSync('osascript', ['-e', 'tell application "Claude" to activate']);
+      if (pid) execFileSync('osascript', ['-e', `tell application "System Events" to set frontmost of (first process whose unix id is ${pid}) to true`]);
+      else if (inst.mode === 'custom' && inst.bundlePath) execFileSync('open', ['-a', inst.bundlePath]);
     } else if (process.platform === 'linux') {
       execFileSync('wmctrl', ['-x', '-a', `Claude ${inst.name}`]);
     }
   } catch (_) {}
-  return { ok: true };
+  return { ok: true, pid: pid || null };
 }
 
 function reveal(inst) {
@@ -63,4 +65,17 @@ function reveal(inst) {
   return { ok: true };
 }
 
-module.exports = { detail, bringToFront, reveal, pidFor };
+// Quit this profile's running instance. The profile (its data dir) stays; it can be relaunched.
+function stop(inst) {
+  try {
+    if (process.platform === 'win32') {
+      execFileSync('powershell', ['-NoProfile', '-Command',
+        `Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*${inst.dataDir}*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }`]);
+    } else {
+      execFileSync('pkill', ['-f', '--', inst.dataDir]);
+    }
+  } catch (_) {}
+  return { ok: true };
+}
+
+module.exports = { detail, bringToFront, reveal, stop, pidFor };

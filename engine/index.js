@@ -71,6 +71,7 @@ function getDetail(id) {
 }
 
 function bringToFront(id) { const it = store.get(id); return it ? info.bringToFront(it) : { ok: false }; }
+function stop(id) { const it = store.get(id); return it ? info.stop(it) : { ok: false }; }
 function reveal(id) { const it = store.get(id); return it ? info.reveal(it) : { ok: false }; }
 
 function rebuild(id) {
@@ -81,5 +82,5 @@ function rebuild(id) {
 
 module.exports = {
   envInfo, listInstances, addInstance, removeInstance,
-  launch, status, getDetail, bringToFront, reveal, rebuild,
+  launch, status, getDetail, bringToFront, reveal, stop, rebuild,
 };

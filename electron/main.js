@@ -17,7 +17,7 @@ function createWindow() {
   win = new BrowserWindow({
     width: 820, height: 640, minWidth: 660, minHeight: 480,
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
-    backgroundColor: '#faf9f5',
+    backgroundColor: '#1e1e20',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -70,13 +70,22 @@ function registerIpc() {
   ipcMain.handle('instances:detail', (_e, id) => engine.getDetail(id));
   ipcMain.handle('instances:front', (_e, id) => engine.bringToFront(id));
   ipcMain.handle('instances:reveal', (_e, id) => engine.reveal(id));
+  ipcMain.handle('instances:stop', async (_e, id) => { const r = engine.stop(id); refreshTray(); return r; });
   ipcMain.handle('dialog:pickIcon', async () => {
     const r = await dialog.showOpenDialog(win || undefined, {
       title: 'Choose an icon',
       properties: ['openFile'],
       filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'icns', 'ico'] }],
     });
-    return r.canceled ? null : r.filePaths[0];
+    if (r.canceled || !r.filePaths[0]) return null;
+    const p = r.filePaths[0];
+    let dataUrl = null;
+    try { dataUrl = nativeImage.createFromPath(p).resize({ width: 96 }).toDataURL(); } catch (_) {}
+    return { path: p, dataUrl };
+  });
+  ipcMain.handle('app:setGlass', (_e, on) => {
+    if (win && !win.isDestroyed()) { try { win.setVibrancy(on ? 'under-window' : null); } catch (_) {} }
+    return { ok: true };
   });
 }
 
