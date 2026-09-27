@@ -35,17 +35,45 @@ pnpm dev          # Vite + Electron with hot reload
 | `pnpm e2e` | Playwright end-to-end test of the Electron app |
 | `pnpm format` | Prettier |
 
-## Building the installers
+## Building an installer locally
 
-```bash
-pnpm dist:mac      # → release/  (.dmg, Apple Silicon)
-pnpm dist:win      # → release/  (.exe)  — run on Windows
-pnpm dist:linux    # → release/  (.AppImage, .deb)
-```
+This produces a real, double-clickable installer you can test or hand to
+someone. **You can only build for the OS you're on** (a Mac builds the macOS
+`.dmg`, a Windows machine builds the `.exe`, etc.) — electron-builder packages
+native binaries, so there's no cross-building.
+
+**Steps:**
+
+1. Install dependencies once: `pnpm install`
+2. Run the one command for your OS:
+
+   ```bash
+   pnpm dist:mac      # macOS   → release/Claude Profiles-<version>-arm64.dmg
+   pnpm dist:win      # Windows → release/Claude Profiles Setup <version>.exe
+   pnpm dist:linux    # Linux   → release/Claude Profiles-<version>.AppImage  (+ .deb)
+   ```
+
+   Each command runs `vite build` (bundles the renderer into `dist/`) and then
+   `electron-builder` (packages the app). It takes a minute or two.
+
+3. **Find the installer in the `release/` folder** (this is the output directory,
+   set by `build.directories.output` in `package.json`). The file you want is the
+   `.dmg` / `.exe` / `.AppImage` — that's what you install or share. Everything
+   else in `release/` (`.blockmap`, `latest-*.yml`, the `mac-arm64/` unpacked app)
+   is electron-builder's supporting output and can be ignored.
+
+4. **Test it:** open the `.dmg` and drag the app to Applications (macOS), or run
+   the `.exe` / `.AppImage`. On first launch macOS shows a one-time
+   "unidentified developer" prompt (see below) — right-click the app → **Open**.
+
+> **Which command do I run?** On a Mac, it's **`pnpm dist:mac`**, and the result
+> is **`release/Claude Profiles-<version>-arm64.dmg`**. That single `.dmg` is the
+> whole app.
 
 Builds are **unsigned** (no Apple/Windows certificate), which is fine for
 open-source distribution — users get a one-time "unidentified developer" prompt.
-On macOS an unsigned local build skips code signing automatically.
+On macOS an unsigned local build skips code signing automatically. The `release/`
+folder is git-ignored, so build output never gets committed.
 
 ## Releasing
 

@@ -1,10 +1,38 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import octoHero from './assets/octo-hero.png';
+import octoTan from './assets/octo-tan.png';
+import octoMark from './assets/octo-mark.png';
 
 const COLORS = ['blue', 'green', 'coral', 'violet', 'slate'];
 const TABS = [{ key: 'simple', label: 'Quick Launch' }, { key: 'custom', label: 'Custom' }];
 const THEMES = [['system', 'System'], ['light', 'Light'], ['dark', 'Dark'], ['darker', 'Darker']];
 const REPO = 'https://github.com/shahrukhkhan007/claude-profiles';
+const LINKEDIN = 'https://www.linkedin.com/in/profile-shah-rukh-khan/';
 const api = typeof window !== 'undefined' ? window.api : undefined;
+
+// Onboarding background: a randomly scattered field of octopuses (varied sizes,
+// jittered grid so it reads random, not a diagonal lattice). Each one glows on
+// its own staggered cycle, so a few random ones light up and fade at any moment.
+function mulberry32(a) { return function () { a |= 0; a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+const FIELD = (() => {
+  const rnd = mulberry32(7), cols = 8, rows = 7, out = [];
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+    const jx = (rnd() - 0.5) * 0.85, jy = (rnd() - 0.5) * 0.85;
+    out.push({
+      l: (((c + 0.5) / cols + jx / cols) * 100).toFixed(2) + '%',
+      t: (((r + 0.5) / rows + jy / rows) * 100).toFixed(2) + '%',
+      s: Math.round(24 + rnd() * 32),
+      rot: Math.round((rnd() - 0.5) * 40) + 'deg',
+      dx: Math.round((rnd() - 0.5) * 26) + 'px',          // ± left/right drift
+      dy: -Math.round(6 + rnd() * 16) + 'px',             // mostly upward
+      gdur: (5.75 + rnd() * 3.45).toFixed(2) + 's',        // glow speed (~15% slower)
+      gdel: (rnd() * 8).toFixed(2) + 's',
+      fdur: (4.15 + rnd() * 3.45).toFixed(2) + 's',        // float speed (~15% slower)
+      fdel: (rnd() * 5).toFixed(2) + 's',
+    });
+  }
+  return out;
+})();
 
 const lsGet = (k, d) => { try { return localStorage.getItem(k) ?? d; } catch (_) { return d; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (_) {} };
@@ -17,11 +45,11 @@ function Avatar({ color, iconData, name, lg, sm }) {
   const style = custom ? { background: `linear-gradient(160deg, color-mix(in srgb, ${color} 82%, #fff), ${color})` } : undefined;
   return <div className={'icon ' + (custom ? '' : (color || 'blue')) + (lg ? ' lg' : '') + (sm ? ' sm' : '')} style={style}>{iconData ? <img src={iconData} alt="" /> : initials(name)}</div>;
 }
-function Swatches({ value, onColor }) {
+function Swatches({ value, onColor, disabled }) {
   return (
-    <div className="swatches">
-      {COLORS.map((c) => <button key={c} className={'sw ' + c + (value === c ? ' sel' : '')} onClick={() => onColor(c)} aria-label={c} />)}
-      <input type="color" className={'sw-pick' + (isHex(value) ? ' sel' : '')} title="Custom color" value={isHex(value) ? value : '#d97757'} onChange={(e) => onColor(e.target.value)} />
+    <div className={'swatches' + (disabled ? ' disabled' : '')}>
+      {COLORS.map((c) => <button key={c} disabled={disabled} className={'sw ' + c + (value === c ? ' sel' : '')} onClick={() => onColor(c)} aria-label={c} />)}
+      <input type="color" disabled={disabled} className={'sw-pick' + (isHex(value) ? ' sel' : '')} title="Custom color" value={isHex(value) ? value : '#d97757'} onChange={(e) => onColor(e.target.value)} />
     </div>
   );
 }
@@ -53,8 +81,13 @@ export default function App() {
   const [confirmStop, setConfirmStop] = useState(null);
   const [busy, setBusy] = useState(false);
   const [pickBusy, setPickBusy] = useState(false);
+  const [confirmRemoveImg, setConfirmRemoveImg] = useState(false);
   const [theme, setTheme] = useState(() => lsGet('theme', 'system'));
   const [glass, setGlass] = useState(() => lsGet('glass', '0') === '1');
+  const [trayGlyph, setTrayGlyph] = useState('auto');
+  const [splash, setSplash] = useState(true);
+  const [onboard, setOnboard] = useState(false);
+  const [step, setStep] = useState(0);
 
   const refresh = useCallback(async () => { if (api) setInstances(await api.list()); }, []);
   const softRefresh = useCallback(() => { refresh(); setTimeout(refresh, 1000); }, [refresh]);
@@ -62,13 +95,27 @@ export default function App() {
   const openDetail = async (id) => { setDetail(await api.detail(id)); };
 
   useEffect(() => { if (!api) return; api.envInfo().then(setEnv); if (api.appVersion) api.appVersion().then(setAppVersion); refresh(); }, [refresh]);
+  useEffect(() => {
+    if (!api) return;
+    Promise.all([
+      api.getSettings ? api.getSettings() : Promise.resolve(null),
+      api.appVersion ? api.appVersion() : Promise.resolve(''),
+    ]).then(([s, v]) => {
+      if (s && s.trayGlyph) setTrayGlyph(s.trayGlyph);
+      if (v) setAppVersion(v);
+      // First-run tour: shown once per app version (per build); reappears after a version change.
+      if (!s || s.onboardingSeenVersion !== (v || '')) setOnboard(true);
+    });
+    return api.onNav ? api.onNav((sc) => setScreen(sc === 'settings' || sc === 'about' ? sc : 'home')) : undefined;
+  }, []);
+  useEffect(() => { const t = setTimeout(() => setSplash(false), 1150); return () => clearTimeout(t); }, []);
   useEffect(() => { const r = document.documentElement; if (theme === 'system') r.removeAttribute('data-theme'); else r.setAttribute('data-theme', theme); lsSet('theme', theme); }, [theme]);
   useEffect(() => { document.documentElement.classList.toggle('glass', glass); lsSet('glass', glass ? '1' : '0'); if (api && api.setGlass) api.setGlass(glass); }, [glass]);
 
   const pick = async () => { setPickBusy(true); try { const r = await api.pickIcon(); if (r && r.dataUrl) { setIconPath(r.path); setIconData(r.dataUrl); } } finally { setPickBusy(false); } };
-  const resetForm = () => { setName(''); setColor('blue'); setIconPath(null); setIconData(null); };
+  const resetForm = () => { setName(''); setColor('blue'); setIconPath(null); setIconData(null); setConfirmRemoveImg(false); };
   const openAdd = () => { setEditId(null); resetForm(); setAdding(true); };
-  const openEditForm = (d) => { setEditId(d.id); setName(d.name); setColor(d.color || 'blue'); setIconData(d.iconData || null); setIconPath(null); setDetail(null); setAdding(true); };
+  const openEditForm = (d) => { setEditId(d.id); setName(d.name); setColor(d.color || 'blue'); setIconData(d.iconData || null); setIconPath(null); setConfirmRemoveImg(false); setDetail(null); setAdding(true); };
   const closeForm = () => { setAdding(false); setEditId(null); resetForm(); };
   const submitForm = async () => {
     if (!name.trim()) return;
@@ -82,11 +129,47 @@ export default function App() {
   const [copied, setCopied] = useState(false);
   const copyLogs = async () => { try { const r = api.logs ? await api.logs() : null; await navigator.clipboard.writeText((r && r.text) || 'no logs'); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch (_) {} };
 
+  const finishOnboarding = () => { setOnboard(false); setStep(0); if (api && api.setSettings) api.setSettings({ onboardingSeenVersion: appVersion || '0.1.0' }); };
+
   const rows = instances.filter((i) => i.mode === tab);
   const macClass = env && env.os === 'darwin' ? ' is-mac' : '';
 
   if (!api) return <div className="fallback"><h1>Claude Profiles</h1><p>Run <code>pnpm dev</code> to open this inside the app.</p></div>;
 
+  const Splash = (
+    <div className={'splash' + (splash ? '' : ' hide')}>
+      <img className="splash-octo" src={octoHero} alt="" />
+      <div className="splash-name">Claude Profiles</div>
+      <div className="splash-tag">Many logins. One Claude.</div>
+    </div>
+  );
+  const ONB = [
+    { t: 'Welcome to Claude Profiles', d: 'Run several separate Claude Desktop logins side by side — like browser profiles, but for Claude. Keep work and personal signed in at once.' },
+    { t: 'Two ways to launch', d: 'Quick Launch opens Claude instantly with a separate login. Custom gives a profile its own name and Dock icon so you can tell the windows apart.' },
+    { t: 'Always a click away', d: 'Claude Profiles lives in your menu bar — click the octopus for your profiles, Preferences and more. It stays out of the way until you need it.' },
+  ];
+  const Onboarding = (
+    <div className="onb-full">
+      <div className="onb-field">
+        {FIELD.map((o, i) => (
+          <img key={i} className="field-octo" src={octoTan} alt="" style={{ left: o.l, top: o.t, width: o.s, height: o.s, '--rot': o.rot, '--dx': o.dx, '--dy': o.dy, '--gdur': o.gdur, '--gdel': o.gdel, '--fdur': o.fdur, '--fdel': o.fdel }} />
+        ))}
+      </div>
+      <button className="onb-skip" onClick={finishOnboarding}>Skip</button>
+      <div className="onb-inner">
+        <img className="onb-octo" src={octoHero} alt="" />
+        <div className="onb-t">{ONB[step].t}</div>
+        <div className="onb-d">{ONB[step].d}</div>
+        <div className="onb-dots">{ONB.map((_, i) => <span key={i} className={'onb-dot' + (i === step ? ' on' : '')} />)}</div>
+        <div className="onb-f">
+          {step > 0 ? <button className="btn ghost" onClick={() => setStep((v) => v - 1)}>Back</button> : <span />}
+          {step < ONB.length - 1
+            ? <button className="btn primary" onClick={() => setStep((v) => v + 1)}>Next</button>
+            : <button className="btn primary" onClick={finishOnboarding}>Get started</button>}
+        </div>
+      </div>
+    </div>
+  );
   const Appearance = (
     <section className="sect">
       <h3>Appearance</h3>
@@ -94,34 +177,40 @@ export default function App() {
         <div className="seg">{THEMES.map(([k, l]) => <button key={k} className={theme === k ? 'on' : ''} onClick={() => setTheme(k)}>{l}</button>)}</div></div>
       <div className="set-row"><div><div className="lbl">Glass effect</div><div className="hint">Frosted, translucent surfaces</div></div>
         <button className={'toggle' + (glass ? ' on' : '')} onClick={() => setGlass((v) => !v)} aria-label="Glass effect"><span className="knob" /></button></div>
+      <div className="set-row"><div><div className="lbl">Menu bar icon</div><div className="hint">Auto adapts to the menu bar; or force a colour</div></div>
+        <div className="seg">{[['auto', 'Auto'], ['light', 'Light'], ['dark', 'Dark']].map(([k, l]) => <button key={k} className={trayGlyph === k ? 'on' : ''} onClick={() => { setTrayGlyph(k); if (api && api.setSettings) api.setSettings({ trayGlyph: k }); }}>{l}</button>)}</div></div>
     </section>
   );
   const About = (
     <section className="sect">
-      <div className="about-hero"><div className="icon lg coral">C</div>
+      <div className="about-hero"><img className="about-icon" src={octoHero} alt="Claude Profiles" />
         <div><div className="about-name">Claude Profiles</div><div className="about-ver">Version {appVersion || '0.1.0'} · MIT licensed</div></div></div>
       <p className="about-p">Run several separate <b>Claude Desktop logins</b> side by side on one machine — like browser profiles, but for Claude. Keep work and personal signed in at once, each with its own history and, if you like, its own name and icon.</p>
       <p className="about-p">It works on your <b>already-installed</b> Claude — it never bundles Anthropic’s app, makes no network calls of its own, and never touches your conversations.</p>
       <div className="about-tags"><span className="chiptag">Open source</span><span className="chiptag">macOS · Windows · Linux</span><span className="chiptag">No telemetry</span></div>
-      <div className="about-links"><button className="btn primary" onClick={() => ext(REPO)}>View on GitHub</button><button className="btn ghost" onClick={() => ext('https://dotsrk.com')}>Built by Shahrukh Khan</button><button className="btn ghost" onClick={copyLogs}>{copied ? 'Copied ✓' : 'Copy diagnostics'}</button></div>
+      <div className="about-links"><button className="btn primary" onClick={() => ext(REPO)}>View on GitHub</button><button className="btn ghost" onClick={() => ext(LINKEDIN)}>Built by Shahrukh Khan</button><button className="btn ghost" onClick={copyLogs}>{copied ? 'Copied ✓' : 'Copy diagnostics'}</button></div>
     </section>
   );
 
   if (screen === 'settings' || screen === 'about') {
     return (
       <div className={'app' + macClass}>
+        {Splash}
+        {onboard && Onboarding}
         <header className="topbar">
           <button className="icon-btn back" onClick={() => setScreen('home')} title="Back">‹</button>
           <div className="pagetitle">{screen === 'settings' ? 'Settings' : 'About'}</div><div className="spacer" />
         </header>
-        <main className="page">{screen === 'settings' ? Appearance : About}</main>
-        <footer className="statusbar"><span className="cd" />{env ? <>Claude {env.version || '—'} · {env.claudeApp ? 'detected' : 'not found'}</> : '—'}<span className="credit">Built by <b>Shahrukh Khan</b></span></footer>
+        <main className="page wide">{screen === 'settings' ? Appearance : About}</main>
+        <footer className="statusbar"><span className="cd" />{env ? <>Claude {env.version || '—'} · {env.claudeApp ? 'detected' : 'not found'}</> : '—'}<button className="credit" onClick={() => ext(LINKEDIN)} title="Shahrukh Khan on LinkedIn">Built by <b>Shahrukh Khan</b></button></footer>
       </div>
     );
   }
 
   return (
     <div className={'app' + macClass}>
+      {Splash}
+      {onboard && Onboarding}
       <header className="topbar">
         <div className="tabs">{TABS.map((t) => <button key={t.key} className={'tab' + (tab === t.key ? ' active' : '')} onClick={() => { setTab(t.key); setAdding(false); }}>{t.label}</button>)}</div>
         <div className="spacer" />
@@ -136,6 +225,7 @@ export default function App() {
             </div>
           </>)}
         </div>
+        <div className="brand"><img className="octo-mark" src={octoMark} alt="" /><span>Claude Profiles</span></div>
       </header>
 
       {adding && (
@@ -151,16 +241,26 @@ export default function App() {
                   {pickBusy && <SpinRing />}
                 </div>
                 <div className="preview-actions">
-                  <button className="btn ghost small" disabled={pickBusy} onClick={pick}>{pickBusy ? 'Adding…' : (iconData ? 'Change image' : 'Choose image')}</button>
-                  {iconData && !pickBusy && <button className="btn ghost small" onClick={() => { setIconData(null); setIconPath(null); }}>Remove</button>}
-                  <div className="preview-hint">{pickBusy ? 'Processing image…' : (iconData ? 'This image will be its icon.' : 'Add a photo, or pick a colour below.')}</div>
+                  {confirmRemoveImg ? (
+                    <div className="rm-confirm">
+                      <span>Remove this image?</span>
+                      <button className="btn ghost small" onClick={() => setConfirmRemoveImg(false)}>Keep</button>
+                      <button className="btn danger small" onClick={() => { setIconData(null); setIconPath(null); setConfirmRemoveImg(false); }}>Remove</button>
+                    </div>
+                  ) : (
+                    <>
+                      <button className="btn ghost small" disabled={pickBusy} onClick={pick}>{pickBusy ? 'Adding…' : (iconData ? 'Change image' : 'Choose image')}</button>
+                      {iconData && !pickBusy && <button className="btn ghost small" onClick={() => setConfirmRemoveImg(true)}>Remove</button>}
+                      <div className="preview-hint">{pickBusy ? 'Processing image…' : (iconData ? 'This image will be its icon.' : 'Add a photo, or pick a colour below.')}</div>
+                    </>
+                  )}
                 </div>
               </div>
               <label className="fld"><span>Name</span>
                 <input autoFocus placeholder="e.g. Work" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && submitForm()} />
               </label>
-              <div className="fld"><span>Colour</span>
-                <Swatches value={color} onColor={(c) => { setColor(c); setIconData(null); setIconPath(null); }} />
+              <div className="fld"><span>Colour{iconData ? <em className="fld-note"> — remove the image to choose a colour</em> : null}</span>
+                <Swatches value={color} disabled={!!iconData} onColor={(c) => setColor(c)} />
               </div>
             </div>
             <div className="modal-f">
@@ -190,7 +290,7 @@ export default function App() {
         ))}
       </main>
 
-      <footer className="statusbar"><span className="cd" />{env ? <>Claude {env.version || '—'} · {env.claudeApp ? 'detected' : 'not found'}</> : 'Loading…'}<span className="credit">Built by <b>Shahrukh Khan</b></span></footer>
+      <footer className="statusbar"><span className="cd" />{env ? <>Claude {env.version || '—'} · {env.claudeApp ? 'detected' : 'not found'}</> : 'Loading…'}<button className="credit" onClick={() => ext(LINKEDIN)} title="Shahrukh Khan on LinkedIn">Built by <b>Shahrukh Khan</b></button></footer>
 
       {detail && (
         <div className="overlay" onClick={() => setDetail(null)}>

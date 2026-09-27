@@ -5,11 +5,18 @@ const engine = require('../engine');
 const cplog = require('../engine/log');
 
 const DEV_URL = 'http://127.0.0.1:5173';
-const APP_ICON = path.join(__dirname, '..', 'build', 'icon.png');
-
-// Small monochrome menu-bar glyph (template image adapts to light/dark).
-const TRAY_ICON =
-  'iVBORw0KGgoAAAANSUhEUgAAACwAAAAsCAYAAAAehFoBAAAAzklEQVR4nO2YQRKAMAgDq///s94dhQChaid76sFCzNAKjiGEEBYbOd7RnYsRxBJJz1sRnBFazr8nEzHEpuJE35Al9A5IS8ThTrFw/GxJvAZaEqi7VjzKlYc8iIiNnIVrvNA5YpRE9OBuD2tKMs9d9pfSpeLwdLFj/PCWsAS3NzIZlnL4k0hwNxLcjSU428i0spTDHq+47AmuNkfWvtReRklEEx8Pa4glJw4kIQtXz9K3RHdLCcXPimCWx5QhlOU2fQhF+M3fyzs+OVYJIQqcVaocNXfbUroAAAAASUVORK5CYII=';
+// Runtime assets: from build/ in dev, from Resources/assets in the packaged app (see build.extraResources).
+const ASSET_DIR = app.isPackaged
+  ? path.join(process.resourcesPath, 'assets')
+  : path.join(__dirname, '..', 'build');
+const APP_ICON = path.join(ASSET_DIR, 'icon.png');
+// Menu-bar glyph options. 'auto' is a template image (macOS tints it to match
+// the bar); 'light'/'dark' are fixed-colour glyphs for users who want to force one.
+const GLYPHS = {
+  auto: { file: path.join(ASSET_DIR, 'trayTemplate.png'), template: true },
+  light: { file: path.join(ASSET_DIR, 'trayLight.png'), template: false },
+  dark: { file: path.join(ASSET_DIR, 'trayDark.png'), template: false },
+};
 
 let win = null;
 let tray = null;
@@ -31,21 +38,48 @@ function createWindow() {
   else win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
 }
 
+// Open the manager window and navigate the renderer to a screen (home/settings/about).
+function showManager(screen) {
+  createWindow();
+  const target = screen === 'settings' || screen === 'about' ? screen : 'home';
+  const send = () => { try { win.webContents.send('app:nav', target); } catch (_) {} };
+  if (win.webContents.isLoading()) win.webContents.once('did-finish-load', send);
+  else send();
+  try { win.show(); win.focus(); } catch (_) {}
+}
+
 async function buildTrayMenu() {
   let items = [];
   try { items = await engine.listInstances(); } catch (_) {}
   const running = items.filter((i) => i.running).length;
-  const rows = items.map((i) => ({
+  const row = (i) => ({
     label: `${i.running ? '●' : '○'}  ${i.name}${i.updateAvailable ? '  (update)' : ''}`,
-    click: () => { engine.launch(i.id).then(refreshTray); },
-  }));
+    click: () => {
+      const act = i.running ? engine.bringToFront(i.id) : engine.launch(i.id);
+      Promise.resolve(act).then(refreshTray).catch(() => {});
+    },
+  });
+  const simple = items.filter((i) => i.mode !== 'custom');
+  const customs = items.filter((i) => i.mode === 'custom');
+  // Quick Launch / Custom shown as submenus — a native menu can't hold real
+  // tabs, so each group expands on hover (the closest Mac-native equivalent).
+  const submenu = (list) => (list.length ? list.map(row) : [{ label: 'No profiles yet', enabled: false }]);
+  const groupItem = (title, list) => ({
+    label: list.length ? `${title} (${list.length})` : title,
+    submenu: submenu(list),
+  });
   return Menu.buildFromTemplate([
     { label: `Claude Profiles — ${running} running`, enabled: false },
     { type: 'separator' },
-    ...(rows.length ? rows : [{ label: 'No profiles yet', enabled: false }]),
+    groupItem('Quick Launch', simple),
+    groupItem('Custom', customs),
     { type: 'separator' },
-    { label: 'Open Manager…', click: () => createWindow() },
-    { label: 'Quit', click: () => app.quit() },
+    { label: 'New Profile…', click: () => showManager('home') },
+    { label: 'Open Manager…', click: () => showManager('home') },
+    { label: 'Preferences…', accelerator: 'CommandOrControl+,', click: () => showManager('settings') },
+    { label: 'About Claude Profiles', click: () => showManager('about') },
+    { type: 'separator' },
+    { label: 'Quit', accelerator: 'CommandOrControl+Q', click: () => app.quit() },
   ]);
 }
 
@@ -54,10 +88,20 @@ async function refreshTray() {
   tray.setContextMenu(await buildTrayMenu());
 }
 
+// Apply the user's menu-bar glyph choice (auto template, or forced light/dark).
+function applyTrayGlyph() {
+  if (!tray) return;
+  let choice = 'auto';
+  try { choice = (engine.getSettings() || {}).trayGlyph || 'auto'; } catch (_) {}
+  const g = GLYPHS[choice] || GLYPHS.auto;
+  const img = nativeImage.createFromPath(g.file);
+  img.setTemplateImage(g.template);
+  tray.setImage(img);
+}
+
 function createTray() {
-  const img = nativeImage.createFromDataURL(`data:image/png;base64,${TRAY_ICON}`);
-  img.setTemplateImage(true);
-  tray = new Tray(img);
+  tray = new Tray(nativeImage.createEmpty());
+  applyTrayGlyph();
   tray.setToolTip('Claude Profiles');
   refreshTray();
 }
@@ -101,6 +145,14 @@ function registerIpc() {
   ipcMain.handle('app:version', () => app.getVersion());
   ipcMain.handle('app:logs', () => ({ path: cplog.LOG_FILE, text: cplog.tail(400) }));
   ipcMain.handle('app:openExternal', (_e, url) => { try { if (/^https?:\/\//.test(String(url))) shell.openExternal(url); } catch (_) {} return { ok: true }; });
+  ipcMain.handle('app:getSettings', () => { try { return engine.getSettings(); } catch (_) { return {}; } });
+  ipcMain.handle('app:setSettings', (_e, patch) => {
+    let r = {};
+    try { r = engine.setSettings(patch || {}); } catch (_) {}
+    if (patch && Object.prototype.hasOwnProperty.call(patch, 'trayGlyph')) applyTrayGlyph();
+    return r;
+  });
+  ipcMain.handle('app:showManager', (_e, screen) => { showManager(screen); return { ok: true }; });
   ipcMain.handle('app:setGlass', (_e, on) => {
     if (win && !win.isDestroyed()) { try { win.setVibrancy(on ? 'under-window' : null); } catch (_) {} }
     return { ok: true };
@@ -112,7 +164,7 @@ app.whenReady().then(() => {
   try { if (process.platform === 'darwin' && app.dock) app.dock.setIcon(nativeImage.createFromPath(APP_ICON)); } catch (_) {}
   registerIpc();
   createWindow();
-  if (app.isPackaged) createTray(); // no tray in dev — keeps restarts clean
+  createTray(); // menu bar presence in dev + prod
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
 

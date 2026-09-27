@@ -48,7 +48,9 @@ function macBundlePath(name) {
 
 // Turn a PNG/JPG into an .icns and set it as the clone's icon.
 function macApplyIcon(bundlePath, iconPath) {
-  if (!iconPath || !fs.existsSync(iconPath)) return;
+  const exists = !!(iconPath && fs.existsSync(iconPath));
+  log('applyIcon: iconPath=' + iconPath + ' exists=' + exists);
+  if (!exists) { log('applyIcon: SKIP — no icon file on disk, keeping default Claude icon'); return false; }
   const work = fs.mkdtempSync(path.join(os.tmpdir(), 'cp-icon-'));
   const iconset = path.join(work, 'AppIcon.iconset');
   fs.mkdirSync(iconset, { recursive: true });
@@ -56,9 +58,20 @@ function macApplyIcon(bundlePath, iconPath) {
     run('sips', ['-z', String(s), String(s), iconPath, '--out', path.join(iconset, `icon_${s}x${s}.png`)]);
     run('sips', ['-z', String(s * 2), String(s * 2), iconPath, '--out', path.join(iconset, `icon_${s}x${s}@2x.png`)]);
   }
+  const plist = path.join(bundlePath, 'Contents', 'Info.plist');
   const icns = path.join(bundlePath, 'Contents', 'Resources', 'AppIcon.icns');
   run('iconutil', ['-c', 'icns', iconset, '-o', icns]);
-  run('/usr/libexec/PlistBuddy', ['-c', 'Set :CFBundleIconFile AppIcon', path.join(bundlePath, 'Contents', 'Info.plist')]);
+  // Set BOTH the icon file name and clear any alternate Electron default, so the
+  // bundle icon is unambiguously ours.
+  runLogged('/usr/libexec/PlistBuddy', ['-c', 'Set :CFBundleIconFile AppIcon', plist]);
+  runLogged('/usr/libexec/PlistBuddy', ['-c', 'Set :CFBundleIconName AppIcon', plist]);
+  // Bust the macOS icon cache: bump mtimes so Finder/Dock/LaunchServices re-read it.
+  try { run('touch', [icns]); } catch (_) {}
+  try { run('touch', [plist]); } catch (_) {}
+  try { run('touch', [bundlePath]); } catch (_) {}
+  const built = fs.existsSync(icns);
+  log('applyIcon: wrote ' + icns + ' built=' + built + ' bytes=' + (built ? fs.statSync(icns).size : 0));
+  return built;
 }
 
 // Ad-hoc re-sign a modified Electron clone. A plain `codesign --sign -` strips
