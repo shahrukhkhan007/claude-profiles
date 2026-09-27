@@ -17,3 +17,6 @@ Thumbs.db
 .claude-instance-manager/
 release/
 .cp-debug.log
+
+# Local Claude Code settings (machine-specific, never commit)
+.claude/settings.local.json

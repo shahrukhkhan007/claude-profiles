@@ -91,8 +91,20 @@ function update(id, patch) {
 }
 
 function remove(id) {
-  const instances = readAll().filter((i) => i.id !== id);
-  writeAll(instances);
+  const all = readAll();
+  const inst = all.find((i) => i.id === id);
+  if (inst) {
+    // Full cleanup — leave no trace: the profile's data dir (login + history)
+    // and its persisted icon file.
+    try { if (inst.dataDir && fs.existsSync(inst.dataDir)) fs.rmSync(inst.dataDir, { recursive: true, force: true }); } catch (_) {}
+    try {
+      for (const ext of ['png', 'jpg', 'jpeg', 'gif', 'webp', 'icns', 'ico']) {
+        const f = path.join(ICON_DIR, `${id}.${ext}`);
+        if (fs.existsSync(f)) fs.rmSync(f, { force: true });
+      }
+    } catch (_) {}
+  }
+  writeAll(all.filter((i) => i.id !== id));
   return true;
 }
 

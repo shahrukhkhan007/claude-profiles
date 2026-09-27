@@ -139,7 +139,19 @@ function macCreate(inst) {
 }
 
 function macRemove(inst) {
-  if (inst.bundlePath && fs.existsSync(inst.bundlePath)) run('rm', ['-rf', inst.bundlePath]);
+  const bundle = inst.bundlePath;
+  const LSREGISTER = '/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister';
+  // 1) Quit the running clone (its process command line carries --user-data-dir=<dataDir>).
+  if (inst.dataDir) { try { run('pkill', ['-f', '--', inst.dataDir]); } catch (_) {} }
+  if (bundle) {
+    // 2) Unregister from Launch Services so Finder/Dock/Spotlight forget the app.
+    try { run(LSREGISTER, ['-u', bundle]); } catch (_) {}
+    // 3) Delete the cloned app bundle.
+    if (fs.existsSync(bundle)) { try { run('rm', ['-rf', bundle]); } catch (_) {} }
+  }
+  // 4) Refresh the Dock so any lingering icon of the deleted app disappears.
+  try { run('killall', ['Dock']); } catch (_) {}
+  log('macRemove:', inst.name, '— quit, unregistered, deleted, Dock refreshed');
 }
 
 /* ---------------- Windows ---------------- */
