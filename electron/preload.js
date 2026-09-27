@@ -19,4 +19,15 @@ contextBridge.exposeInMainWorld('api', {
   setGlass: (on) => ipcRenderer.invoke('app:setGlass', on),
   appVersion: () => ipcRenderer.invoke('app:version'),
   openExternal: (url) => ipcRenderer.invoke('app:openExternal', url),
+  // Test mode: lets the renderer skip splash/onboarding so e2e can drive the UI.
+  e2e: !!(process.env.CP_E2E || process.env.CP_TEST),
+  getSettings: () => ipcRenderer.invoke('app:getSettings'),
+  setSettings: (patch) => ipcRenderer.invoke('app:setSettings', patch),
+  showManager: (screen) => ipcRenderer.invoke('app:showManager', screen),
+  // Navigation pushed from the tray menu (Preferences/About). Returns an unsubscribe fn.
+  onNav: (cb) => {
+    const h = (_e, screen) => cb(screen);
+    ipcRenderer.on('app:nav', h);
+    return () => ipcRenderer.removeListener('app:nav', h);
+  },
 });

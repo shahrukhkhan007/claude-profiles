@@ -52,10 +52,13 @@ body{font-family:var(--sans);background:var(--bg);color:var(--ink);-webkit-font-
 .app{display:flex;flex-direction:column;height:100%}
 .fallback{padding:40px;max-width:60ch;margin:0 auto;line-height:1.6;color:var(--ink)}
 
-.topbar{display:flex;align-items:center;gap:10px;padding:10px 12px;padding-top:30px;
+.topbar{position:relative;display:flex;align-items:center;gap:10px;padding:10px 12px;padding-top:30px;
   -webkit-app-region:drag;border-bottom:1px solid var(--line);background:var(--bar)}
 .app.is-mac .topbar{padding-top:38px;padding-left:12px}
 .topbar .tabs,.topbar .btn,.topbar .icon-btn{-webkit-app-region:no-drag}
+.brand{position:absolute;top:10px;right:16px;z-index:5;display:flex;align-items:center;gap:7px;-webkit-app-region:no-drag}
+.brand span{font-size:12px;font-weight:600;color:var(--ink2);letter-spacing:0;white-space:nowrap}
+.brand .octo-mark{width:16px;height:16px}
 .tabs{display:flex;gap:3px;background:var(--hover);padding:3px;border-radius:11px}
 .tab{font:600 13px var(--sans);color:var(--ink2);padding:6px 14px;border-radius:8px;border:0;background:transparent;cursor:pointer;min-width:108px;text-align:center}
 .tab.active{background:var(--panel);color:var(--accent2);box-shadow:0 1px 2px rgba(0,0,0,.12)}
@@ -224,3 +227,68 @@ body{font-family:var(--sans);background:var(--bg);color:var(--ink);-webkit-font-
 .avatar-spin .dash{stroke:var(--accent);stroke-linecap:round;stroke-dasharray:26 74;animation:cp-dash 1.05s linear infinite}
 @keyframes cp-dash{to{stroke-dashoffset:-100}}
 @media (prefers-reduced-motion:reduce){.avatar-spin .dash{animation-duration:2.4s}}
+
+/* --- About: wider card + real app icon --- */
+.page.wide .sect{max-width:none}
+.about-icon{width:64px;height:64px;border-radius:16px;flex:none;box-shadow:0 6px 16px rgba(0,0,0,.18);display:block}
+
+/* --- Footer credit: clickable, with glowing octopus mark --- */
+.statusbar .credit{margin-left:auto;display:inline-flex;align-items:center;gap:7px;background:none;border:0;padding:0;
+  font:inherit;font-size:12.5px;color:var(--ink3);cursor:pointer;-webkit-app-region:no-drag}
+.statusbar .credit b{color:var(--ink2);font-weight:600;transition:color .2s}
+.statusbar .credit:hover b{color:var(--accent2)}
+.octo-mark{width:16px;height:16px;object-fit:contain;transition:filter .2s ease,transform .2s ease}
+.statusbar .credit .credit-app{color:var(--ink2);font-weight:600}
+.statusbar .credit .credit-sep{color:var(--ink3);opacity:.75;margin:0 -2px}
+.statusbar .credit:hover .octo-mark{filter:drop-shadow(0 0 5px rgba(208,96,47,.85));transform:scale(1.14)}
+
+/* --- Splash screen (brief, on launch) --- */
+@keyframes cp-pop{0%{transform:scale(.82);opacity:0}60%{transform:scale(1.04)}100%{transform:scale(1);opacity:1}}
+.splash{position:fixed;inset:0;z-index:60;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:13px;background:var(--bg);opacity:1;transition:opacity .45s ease}
+.splash.hide{opacity:0;pointer-events:none}
+.splash-octo{width:112px;height:112px;border-radius:26px;box-shadow:0 14px 34px rgba(0,0,0,.28);animation:cp-pop .5s ease both}
+.splash-name{font-size:20px;font-weight:800;color:var(--ink);letter-spacing:-.01em}
+.splash-tag{font-size:13px;color:var(--ink3)}
+
+/* --- First-run onboarding: full-page branded takeover --- */
+.onb-full{position:fixed;inset:0;z-index:40;display:flex;align-items:center;justify-content:center;
+  padding:36px;overflow:hidden;background:#efe6d6}                 /* original cream */
+.onb-field{position:absolute;inset:0;pointer-events:none}
+.field-octo{position:absolute;opacity:.4;pointer-events:none;will-change:transform,opacity,filter;
+  transform:translate(-50%,-50%) rotate(var(--rot,0deg));
+  animation:floatMove var(--fdur,5s) ease-in-out var(--fdel,0s) infinite alternate,
+            fieldGlow var(--gdur,6s) ease-in-out var(--gdel,0s) infinite}
+@keyframes floatMove{
+  from{transform:translate(-50%,-50%) translate(0,0) rotate(var(--rot,0deg))}
+  to{transform:translate(-50%,-50%) translate(var(--dx,0px),var(--dy,-14px)) rotate(var(--rot,0deg))}
+}
+@keyframes fieldGlow{
+  0%,78%,100%{opacity:.34;filter:none}
+  88%{opacity:1;filter:brightness(1.15) drop-shadow(0 0 9px rgba(224,118,64,.95)) drop-shadow(0 0 20px rgba(224,118,64,.55))}
+  94%{opacity:.5;filter:brightness(1.05)}
+}
+@media (prefers-reduced-motion:reduce){.field-octo{animation:none;opacity:.42;transform:translate(-50%,-50%) rotate(var(--rot,0deg))}}
+.onb-inner{position:relative;z-index:2;width:100%;max-width:440px;text-align:center;
+  display:flex;flex-direction:column;align-items:center}
+.onb-skip{position:absolute;top:18px;right:22px;z-index:3;cursor:pointer;border:0;background:none;
+  font-size:13.5px;font-weight:800;color:#3a3025;text-shadow:0 0 4px #f2ead9,0 0 9px #f2ead9,0 1px 2px #f4ecde}
+.onb-skip:hover{color:#241d16}
+.onb-octo{width:104px;height:104px;border-radius:24px;box-shadow:0 14px 34px rgba(120,70,30,.22);animation:cp-pop .5s ease both}
+.onb-t{font-size:23px;font-weight:800;color:#221b12;letter-spacing:-.01em;margin-top:22px;
+  text-shadow:0 0 4px #f2ead9,0 0 9px #f2ead9,0 0 16px #f2ead9,0 1px 2px #f4ecde}
+.onb-d{font-size:15px;font-weight:600;color:#332a1f;line-height:1.6;margin-top:12px;max-width:36ch;
+  text-shadow:0 0 4px #f2ead9,0 0 8px #f2ead9,0 0 14px #f2ead9,0 0 22px #f2ead9,0 1px 2px #f4ecde}
+.onb-dots{display:flex;gap:7px;justify-content:center;margin:26px 0 4px}
+.onb-dot{width:8px;height:8px;border-radius:50%;background:rgba(43,36,29,.2);transition:background .2s}
+.onb-dot.on{background:#cf5f3d}
+.onb-f{display:flex;justify-content:center;align-items:center;gap:12px;margin-top:20px}
+.onb-f .btn{min-width:120px;justify-content:center}
+.onb-full .btn.ghost{background:rgba(255,251,244,.7);color:#2b241d;border-color:rgba(43,36,29,.16)}
+.onb-full .btn.ghost:hover{background:rgba(255,251,244,.9)}
+
+/* Add/Edit modal: image vs colour affordances */
+.swatches.disabled{opacity:.4;pointer-events:none;filter:grayscale(.3)}
+.fld-note{font-style:normal;font-weight:400;text-transform:none;letter-spacing:0;color:var(--ink3);font-size:11.5px}
+.rm-confirm{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--ink2)}
+.rm-confirm span{margin-right:2px}

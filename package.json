@@ -79,6 +79,24 @@
       ],
       "category": "Utility",
       "icon": "build/icon.png"
-    }
+    },
+    "extraResources": [
+      {
+        "from": "build",
+        "to": "assets",
+        "filter": [
+          "icon.png",
+          "trayTemplate.png",
+          "trayTemplate@2x.png",
+          "trayTemplate@3x.png",
+          "trayLight.png",
+          "trayLight@2x.png",
+          "trayLight@3x.png",
+          "trayDark.png",
+          "trayDark@2x.png",
+          "trayDark@3x.png"
+        ]
+      }
+    ]
   }
 }

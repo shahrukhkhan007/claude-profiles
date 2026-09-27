@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/logo.png" alt="Claude Profiles logo" width="120" height="120" />
+</p>
+
 # Claude Profiles
 
 [![CI](https://github.com/shahrukhkhan007/claude-profiles/actions/workflows/ci.yml/badge.svg)](https://github.com/shahrukhkhan007/claude-profiles/actions/workflows/ci.yml)

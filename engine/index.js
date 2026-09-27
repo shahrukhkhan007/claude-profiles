@@ -5,6 +5,7 @@ const store = require('./instances');
 const launcher = require('./launch');
 const custom = require('./custom');
 const info = require('./detail');
+const settings = require('./settings');
 
 function updateAvailable(inst, installedVersion) {
   return (
@@ -94,4 +95,5 @@ module.exports = {
   updateInstance,
   envInfo, listInstances, addInstance, removeInstance,
   launch, status, getDetail, bringToFront, reveal, stop, rebuild,
+  getSettings: settings.getSettings, setSettings: settings.setSettings,
 };
