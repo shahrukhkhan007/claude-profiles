@@ -85,7 +85,7 @@ export default function App() {
   const [theme, setTheme] = useState(() => lsGet('theme', 'system'));
   const [glass, setGlass] = useState(() => lsGet('glass', '0') === '1');
   const [trayGlyph, setTrayGlyph] = useState('auto');
-  const [splash, setSplash] = useState(true);
+  const [splash, setSplash] = useState(() => !(api && api.e2e));
   const [onboard, setOnboard] = useState(false);
   const [step, setStep] = useState(0);
 
@@ -104,7 +104,7 @@ export default function App() {
       if (s && s.trayGlyph) setTrayGlyph(s.trayGlyph);
       if (v) setAppVersion(v);
       // First-run tour: shown once per app version (per build); reappears after a version change.
-      if (!s || s.onboardingSeenVersion !== (v || '')) setOnboard(true);
+      if (!(api && api.e2e) && (!s || s.onboardingSeenVersion !== (v || ''))) setOnboard(true);
     });
     return api.onNav ? api.onNav((sc) => setScreen(sc === 'settings' || sc === 'about' ? sc : 'home')) : undefined;
   }, []);
