@@ -79,6 +79,7 @@ export default function App() {
   const [detail, setDetail] = useState(null);
   const [editId, setEditId] = useState(null);
   const [confirmStop, setConfirmStop] = useState(null);
+  const [confirmRemove, setConfirmRemove] = useState(null);
   const [busy, setBusy] = useState(false);
   const [pickBusy, setPickBusy] = useState(false);
   const [confirmRemoveImg, setConfirmRemoveImg] = useState(false);
@@ -320,10 +321,25 @@ export default function App() {
                   {detail.running ? <button className="btn primary" onClick={() => api.launch(detail.id)}>Bring to front</button> : <button className="btn primary" onClick={() => { launchAndRefresh(detail.id); setDetail(null); }}>Launch</button>}
                   {detail.running && <button className="btn danger" onClick={() => setConfirmStop(detail)}>Stop</button>}
                   {detail.mode === 'custom' && <button className={'btn ' + (detail.updateAvailable ? 'amber' : 'ghost')} onClick={() => api.rebuild(detail.id).then(() => { setDetail(null); refresh(); })}>Rebuild</button>}
-                  <button className="btn danger" onClick={() => api.remove(detail.id).then(() => { setDetail(null); refresh(); })}>Remove</button>
+                  <button className="btn danger" onClick={() => setConfirmRemove(detail)}>Remove</button>
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {confirmRemove && (
+        <div className="overlay" onClick={() => setConfirmRemove(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-h"><h3>Remove “{confirmRemove.name}”?</h3>
+              <p>{confirmRemove.mode === 'custom'
+                ? 'This deletes its cloned app and Dock icon, plus its login and history. This can’t be undone.'
+                : 'This deletes its login and history. This can’t be undone.'}</p></div>
+            <div className="modal-f">
+              <button className="btn ghost" onClick={() => setConfirmRemove(null)}>Cancel</button>
+              <button className="btn danger" onClick={() => { const id = confirmRemove.id; api.remove(id).then(() => { setConfirmRemove(null); setDetail(null); refresh(); }); }}>Remove</button>
+            </div>
           </div>
         </div>
       )}
