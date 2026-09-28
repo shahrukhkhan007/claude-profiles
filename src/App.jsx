@@ -145,9 +145,9 @@ export default function App() {
     </div>
   );
   const ONB = [
-    { t: 'Welcome to Claude Profiles', d: 'Run several separate Claude Desktop logins side by side — like browser profiles, but for Claude. Keep work and personal signed in at once.' },
+    { t: 'Welcome to Claude Profiles', d: 'Run several separate Claude Desktop logins side by side, like browser profiles, but for Claude. Keep work and personal signed in at once.' },
     { t: 'Two ways to launch', d: 'Quick Launch opens Claude instantly with a separate login. Custom gives a profile its own name and Dock icon so you can tell the windows apart.' },
-    { t: 'Always a click away', d: 'Claude Profiles lives in your menu bar — click the octopus for your profiles, Preferences and more. It stays out of the way until you need it.' },
+    { t: 'Always a click away', d: 'Claude Profiles lives in your menu bar. Click the octopus for your profiles, Preferences and more. It stays out of the way until you need it.' },
   ];
   const Onboarding = (
     <div className="onb-full">
@@ -186,8 +186,8 @@ export default function App() {
     <section className="sect">
       <div className="about-hero"><img className="about-icon" src={octoHero} alt="Claude Profiles" />
         <div><div className="about-name">Claude Profiles</div><div className="about-ver">Version {appVersion || '0.1.0'} · MIT licensed</div></div></div>
-      <p className="about-p">Run several separate <b>Claude Desktop logins</b> side by side on one machine — like browser profiles, but for Claude. Keep work and personal signed in at once, each with its own history and, if you like, its own name and icon.</p>
-      <p className="about-p">It works on your <b>already-installed</b> Claude — it never bundles Anthropic’s app, makes no network calls of its own, and never touches your conversations.</p>
+      <p className="about-p">Run several separate <b>Claude Desktop logins</b> side by side on one machine, like browser profiles, but for Claude. Keep work and personal signed in at once, each with its own history and, if you like, its own name and icon.</p>
+      <p className="about-p">It works on your <b>already-installed</b> Claude. It never bundles Anthropic’s app, makes no network calls of its own, and never touches your conversations.</p>
       <div className="about-tags"><span className="chiptag">Open source</span><span className="chiptag">macOS · Windows · Linux</span><span className="chiptag">No telemetry</span></div>
       <div className="about-links"><button className="btn primary" onClick={() => ext(REPO)}>View on GitHub</button><button className="btn ghost" onClick={() => ext(LINKEDIN)}>Built by Shahrukh Khan</button><button className="btn ghost" onClick={copyLogs}>{copied ? 'Copied ✓' : 'Copy diagnostics'}</button></div>
     </section>
@@ -260,7 +260,7 @@ export default function App() {
               <label className="fld"><span>Name</span>
                 <input autoFocus placeholder="e.g. Work" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && submitForm()} />
               </label>
-              <div className="fld"><span>Colour{iconData ? <em className="fld-note"> — remove the image to choose a colour</em> : null}</span>
+              <div className="fld"><span>Colour{iconData ? <em className="fld-note"> (remove the image to choose a colour)</em> : null}</span>
                 <Swatches value={color} disabled={!!iconData} onColor={(c) => setColor(c)} />
               </div>
             </div>
@@ -347,7 +347,7 @@ export default function App() {
       {confirmStop && (
         <div className="overlay" onClick={() => setConfirmStop(null)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-h"><h3>Stop “{confirmStop.name}”?</h3><p>This quits the running window. The profile, its login and history stay — you can relaunch it anytime.</p></div>
+            <div className="modal-h"><h3>Stop “{confirmStop.name}”?</h3><p>This quits the running window. The profile, its login and history stay, and you can relaunch it anytime.</p></div>
             <div className="modal-f"><button className="btn ghost" onClick={() => setConfirmStop(null)}>Cancel</button><button className="btn danger" onClick={() => doStop(confirmStop.id)}>Stop</button></div>
           </div>
         </div>
