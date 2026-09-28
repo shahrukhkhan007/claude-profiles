@@ -69,7 +69,7 @@ async function buildTrayMenu() {
     submenu: submenu(list),
   });
   return Menu.buildFromTemplate([
-    { label: `Claude Profiles — ${running} running`, enabled: false },
+    { label: `Claude Profiles · ${running} running`, enabled: false },
     { type: 'separator' },
     groupItem('Quick Launch', simple),
     groupItem('Custom', customs),
