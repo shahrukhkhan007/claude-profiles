@@ -43,14 +43,19 @@ Just download the installer for your OS.
    **`.dmg`** file.
 2. Open the `.dmg` and drag **Claude Profiles** into **Applications**.
 3. **First launch (unsigned app).** macOS says it "could not verify" Claude
-   Profiles and, on macOS Sequoia (15) and later, may only offer **Done** and
-   **Move to Bin**. This is expected for an un-notarized app, so do **not** Move
-   it to the Bin. To open it: click **Done**, then go to **System Settings → Privacy
-   & Security**, scroll down and click **Open Anyway**, and confirm with Touch ID.
-   (On older macOS you can instead right-click the app → **Open** → **Open**.)
-   Prefer the terminal? Run
-   `xattr -dr com.apple.quarantine "/Applications/Claude Profiles.app"` and then
-   open it. You only do this once.
+   Profiles, and on macOS Sequoia (15) and later the dialog may only show **Done**
+   and **Move to Bin**. This is expected for an un-notarized app, so do **not**
+   Move it to the Bin. Click **Done**, then open it using either option:
+
+   - **Option A, from System Settings (no terminal):** open **System Settings >
+     Privacy & Security**, scroll down, click **Open Anyway**, then confirm with
+     Touch ID. (On older macOS you can instead right-click the app, choose
+     **Open**, then **Open** again.)
+   - **Option B, from Terminal (one command):** run
+     `xattr -dr com.apple.quarantine "/Applications/Claude Profiles.app"`, then
+     open the app.
+
+   You only do this once.
 4. When you launch a **Custom** profile the first time, macOS may ask to use
    "Claude Safe Storage" from your keychain, click **Always Allow**. It's your
    own Claude data on your own machine.
