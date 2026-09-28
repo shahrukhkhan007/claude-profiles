@@ -40,7 +40,10 @@ Just download the installer for your OS.
 ### macOS
 
 1. Go to the [**Releases**](https://github.com/shahrukhkhan007/claude-profiles/releases/latest) page and download the
-   **`.dmg`** file.
+   macOS **`.dmg`**. It's a **universal** build, so the same file runs on both
+   **Apple Silicon** (M1/M2/M3/M4) and **Intel** Macs. Not sure which you have?
+   Apple menu > **About This Mac**. (If a release ever lists separate files,
+   `...-arm64.dmg` is Apple Silicon and `...-x64.dmg` is Intel.)
 2. Open the `.dmg` and drag **Claude Profiles** into **Applications**.
 3. **First launch (unsigned app).** macOS says it "could not verify" Claude
    Profiles, and on macOS Sequoia (15) and later the dialog may only show **Done**
