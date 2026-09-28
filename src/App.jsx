@@ -80,9 +80,11 @@ export default function App() {
   const [editId, setEditId] = useState(null);
   const [confirmStop, setConfirmStop] = useState(null);
   const [confirmRemove, setConfirmRemove] = useState(null);
+  const [eraseData, setEraseData] = useState(false);
   const [busy, setBusy] = useState(false);
   const [pickBusy, setPickBusy] = useState(false);
   const [confirmRemoveImg, setConfirmRemoveImg] = useState(false);
+  const [rowMenu, setRowMenu] = useState(null);
   const [theme, setTheme] = useState(() => lsGet('theme', 'system'));
   const [glass, setGlass] = useState(() => lsGet('glass', '0') === '1');
   const [trayGlyph, setTrayGlyph] = useState('auto');
@@ -287,6 +289,9 @@ export default function App() {
               {it.running ? (<><button className="btn small ghost" onClick={() => api.launch(it.id).then(refresh)}>Front</button><button className="btn small danger" onClick={() => setConfirmStop(it)}>Stop</button></>)
                 : <button className="btn small primary" onClick={() => launchAndRefresh(it.id)}>Launch</button>}
             </div>
+            <button className="kebab" title="More actions" onClick={(e) => { e.stopPropagation(); const r = e.currentTarget.getBoundingClientRect(); setRowMenu(rowMenu && rowMenu.id === it.id ? null : { id: it.id, x: r.right, y: r.bottom }); }}>
+              <span /><span /><span />
+            </button>
           </div>
         ))}
       </main>
@@ -329,16 +334,32 @@ export default function App() {
         </div>
       )}
 
+      {rowMenu && (() => {
+        const it = rows.find((r) => r.id === rowMenu.id);
+        if (!it) return null;
+        const close = () => setRowMenu(null);
+        return (
+          <>
+            <div className="menu-scrim" onClick={close} />
+            <div className="rowmenu" style={{ top: rowMenu.y + 6, left: rowMenu.x }}>
+              <button onClick={() => { close(); openEditForm(it); }}>Edit</button>
+              <button onClick={() => { close(); setEraseData(false); setConfirmRemove(it); }}>Remove, keep data</button>
+              <button className="danger" onClick={() => { close(); setEraseData(true); setConfirmRemove(it); }}>Delete everything</button>
+            </div>
+          </>
+        );
+      })()}
       {confirmRemove && (
-        <div className="overlay" onClick={() => setConfirmRemove(null)}>
+        <div className="overlay" onClick={() => { setConfirmRemove(null); setEraseData(false); }}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-h"><h3>Remove “{confirmRemove.name}”?</h3>
               <p>{confirmRemove.mode === 'custom'
-                ? 'This deletes its cloned app and Dock icon, plus its login and history. This can’t be undone.'
-                : 'This deletes its login and history. This can’t be undone.'}</p></div>
+                ? 'This removes it from the list and deletes its app clone and Dock icon.'
+                : 'This removes it from the list.'} Its login and history are kept by default, so creating a profile named “{confirmRemove.name}” again later restores this session.</p></div>
+            <label className="chk"><input type="checkbox" checked={eraseData} onChange={(e) => setEraseData(e.target.checked)} /><span>Also permanently delete its login and history (can’t be undone)</span></label>
             <div className="modal-f">
-              <button className="btn ghost" onClick={() => setConfirmRemove(null)}>Cancel</button>
-              <button className="btn danger" onClick={() => { const id = confirmRemove.id; api.remove(id).then(() => { setConfirmRemove(null); setDetail(null); refresh(); }); }}>Remove</button>
+              <button className="btn ghost" onClick={() => { setConfirmRemove(null); setEraseData(false); }}>Cancel</button>
+              <button className={'btn ' + (eraseData ? 'danger' : 'primary')} onClick={() => { const id = confirmRemove.id; api.remove(id, !eraseData).then(() => { setConfirmRemove(null); setEraseData(false); setDetail(null); refresh(); }); }}>{eraseData ? 'Erase everything' : 'Remove, keep data'}</button>
             </div>
           </div>
         </div>

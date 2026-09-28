@@ -7,7 +7,7 @@ contextBridge.exposeInMainWorld('api', {
   add: (data) => ipcRenderer.invoke('instances:add', data),
   update: (id, patch) => ipcRenderer.invoke('instances:update', { id, patch }),
   logs: () => ipcRenderer.invoke('app:logs'),
-  remove: (id) => ipcRenderer.invoke('instances:remove', id),
+  remove: (id, keepData) => ipcRenderer.invoke('instances:remove', { id, keepData }),
   launch: (id) => ipcRenderer.invoke('instances:launch', id),
   rebuild: (id) => ipcRenderer.invoke('instances:rebuild', id),
   status: (id) => ipcRenderer.invoke('instances:status', id),

@@ -55,10 +55,11 @@ function updateInstance(id, patch) {
   return updated;
 }
 
-function removeInstance(id) {
+function removeInstance(id, keepData) {
   const inst = store.get(id);
+  // The app clone / shortcut is always removed; keepData only controls the data dir.
   if (inst && inst.mode === 'custom') { try { custom.remove(inst); } catch (_) {} }
-  return store.remove(id);
+  return store.remove(id, keepData);
 }
 
 async function launch(id) {
