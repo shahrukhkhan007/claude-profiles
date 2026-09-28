@@ -1,8 +1,8 @@
 {
   "name": "claude-profiles",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
-  "description": "Run several separate Claude Desktop logins side by side on one machine \u2014 one clean app, cross-platform (macOS, Windows, Linux).",
+  "description": "Run several separate Claude Desktop logins side by side on one machine — one clean app, cross-platform (macOS, Windows, Linux).",
   "author": "Shah Rukh Khan",
   "license": "MIT",
   "main": "electron/main.js",
