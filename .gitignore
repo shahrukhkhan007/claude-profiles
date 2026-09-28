@@ -20,3 +20,6 @@ release/
 
 # Local Claude Code settings (machine-specific, never commit)
 .claude/settings.local.json
+
+# internal-only architecture notes (not for the public repo)
+docs/ARCHITECTURE.md
