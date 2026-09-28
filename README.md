@@ -23,23 +23,36 @@ redistributes Anthropic's app, and it never touches your conversations.
 
 ## Install
 
-You don't need Node, a terminal, or any developer setup to use Claude Profiles —
-just download the installer for your OS.
+You don't need Node, a terminal, or any developer setup to use Claude Profiles.
+Just download the installer for your OS.
 
 > **Requirement:** [Claude Desktop](https://claude.ai/download) must already be
 > installed. Claude Profiles launches *your* Claude; it doesn't ship its own.
+
+> **Heads-up: the app is unsigned, so your OS warns you on first launch. This is normal and the app is safe.**
+> Claude Profiles is open-source and not signed or notarized (it has no paid Apple or Microsoft certificate), so:
+>
+> - **macOS** says it "could not verify" the app. On newer macOS the dialog may only show **Done** and **Move to Bin**. Do **not** click Move to Bin. Click **Done**, then open **System Settings → Privacy & Security**, scroll down, and click **Open Anyway** (confirm with Touch ID).
+> - **Windows** may show "Windows protected your PC"; click **More info**, then **Run anyway**.
+>
+> You only do this once per install. The per-OS steps below cover it in detail.
 
 ### macOS
 
 1. Go to the [**Releases**](https://github.com/shahrukhkhan007/claude-profiles/releases/latest) page and download the
    **`.dmg`** file.
 2. Open the `.dmg` and drag **Claude Profiles** into **Applications**.
-3. The app isn't notarized yet, so the first time you open it macOS will warn that
-   it's from an unidentified developer. To allow it: **right-click the app →
-   Open → Open**, or go to **System Settings → Privacy & Security** and click
-   **Open Anyway**. You only do this once.
+3. **First launch (unsigned app).** macOS says it "could not verify" Claude
+   Profiles and, on macOS Sequoia (15) and later, may only offer **Done** and
+   **Move to Bin**. This is expected for an un-notarized app, so do **not** Move
+   it to the Bin. To open it: click **Done**, then go to **System Settings → Privacy
+   & Security**, scroll down and click **Open Anyway**, and confirm with Touch ID.
+   (On older macOS you can instead right-click the app → **Open** → **Open**.)
+   Prefer the terminal? Run
+   `xattr -dr com.apple.quarantine "/Applications/Claude Profiles.app"` and then
+   open it. You only do this once.
 4. When you launch a **Custom** profile the first time, macOS may ask to use
-   "Claude Safe Storage" from your keychain — click **Always Allow**. It's your
+   "Claude Safe Storage" from your keychain, click **Always Allow**. It's your
    own Claude data on your own machine.
 
 ### Windows
