@@ -81,6 +81,21 @@ body{font-family:var(--sans);background:var(--bg);color:var(--ink);-webkit-font-
   border-radius:3px 0 0 0;transform:rotate(45deg)}
 :root.glass .menu::before{background:color-mix(in srgb, var(--panel) 88%, transparent)}
 
+/* row actions kebab + dropdown */
+.kebab{-webkit-app-region:no-drag;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+  width:30px;height:30px;border:0;border-radius:8px;background:transparent;cursor:pointer;transition:background .12s;flex:none}
+.kebab:hover{background:var(--hover)}
+.kebab span{width:4px;height:4px;border-radius:50%;background:var(--ink2)}
+.card:hover .kebab span{background:var(--ink)}
+.rowmenu{position:fixed;z-index:31;transform:translateX(-100%);min-width:186px;
+  background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:5px;
+  box-shadow:0 18px 44px -14px rgba(0,0,0,.5);display:flex;flex-direction:column;gap:2px}
+.rowmenu button{font:600 13px var(--sans);text-align:left;color:var(--ink);background:transparent;
+  border:0;border-radius:7px;padding:8px 11px;cursor:pointer}
+.rowmenu button:hover{background:var(--hover)}
+.rowmenu button.danger{color:var(--danger)}
+.rowmenu button.danger:hover{background:color-mix(in srgb, var(--danger) 14%, transparent)}
+
 .btn{font:600 13px var(--sans);border-radius:9px;padding:7px 14px;border:1px solid transparent;cursor:pointer;transition:filter .12s}
 .btn:hover{filter:brightness(1.06)}
 .btn:disabled{opacity:.6;cursor:default}
@@ -292,3 +307,7 @@ body{font-family:var(--sans);background:var(--bg);color:var(--ink);-webkit-font-
 .fld-note{font-style:normal;font-weight:400;text-transform:none;letter-spacing:0;color:var(--ink3);font-size:11.5px}
 .rm-confirm{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--ink2)}
 .rm-confirm span{margin-right:2px}
+
+/* Remove dialog: keep-data vs erase choice */
+.chk{display:flex;align-items:flex-start;gap:9px;margin:2px 0 4px;padding:0 20px;font-size:13px;line-height:1.45;color:var(--ink2);cursor:pointer}
+.chk input{width:15px;height:15px;margin-top:2px;accent-color:var(--accent);cursor:pointer;flex:none}

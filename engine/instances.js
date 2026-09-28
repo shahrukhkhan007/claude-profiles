@@ -90,13 +90,17 @@ function update(id, patch) {
   return instances[idx];
 }
 
-function remove(id) {
+function remove(id, keepData) {
   const all = readAll();
   const inst = all.find((i) => i.id === id);
   if (inst) {
-    // Full cleanup — leave no trace: the profile's data dir (login + history)
-    // and its persisted icon file.
-    try { if (inst.dataDir && fs.existsSync(inst.dataDir)) fs.rmSync(inst.dataDir, { recursive: true, force: true }); } catch (_) {}
+    // Data dir = the profile's login + history, keyed by its name. Deleting it is
+    // the "erase everything" path; keeping it lets a future profile with the same
+    // name pick the session back up. The stored icon is tied to this id, so it
+    // always goes.
+    if (!keepData) {
+      try { if (inst.dataDir && fs.existsSync(inst.dataDir)) fs.rmSync(inst.dataDir, { recursive: true, force: true }); } catch (_) {}
+    }
     try {
       for (const ext of ['png', 'jpg', 'jpeg', 'gif', 'webp', 'icns', 'ico']) {
         const f = path.join(ICON_DIR, `${id}.${ext}`);

@@ -110,7 +110,7 @@ function registerIpc() {
   ipcMain.handle('env:info', () => engine.envInfo());
   ipcMain.handle('instances:list', () => engine.listInstances());
   ipcMain.handle('instances:add', async (_e, data) => { const r = engine.addInstance(data); refreshTray(); return r; });
-  ipcMain.handle('instances:remove', async (_e, id) => { const r = engine.removeInstance(id); refreshTray(); return r; });
+  ipcMain.handle('instances:remove', async (_e, arg) => { const id = arg && typeof arg === 'object' ? arg.id : arg; const keepData = arg && typeof arg === 'object' ? !!arg.keepData : false; const r = engine.removeInstance(id, keepData); refreshTray(); return r; });
   ipcMain.handle('instances:launch', async (_e, id) => { const r = await engine.launch(id); refreshTray(); return r; });
   ipcMain.handle('instances:rebuild', async (_e, id) => { const r = engine.rebuild(id); refreshTray(); return r; });
   ipcMain.handle('instances:status', (_e, id) => engine.status(id));
