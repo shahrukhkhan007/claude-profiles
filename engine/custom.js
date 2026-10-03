@@ -1,4 +1,5 @@
 'use strict';
+const { uddNeedle } = require('./procmatch');
 // Custom profiles: give a profile its own name + icon in the Dock / taskbar.
 // macOS clones the Claude app; Windows/Linux use a shortcut / .desktop entry.
 const os = require('os');
@@ -142,7 +143,7 @@ function macRemove(inst) {
   const bundle = inst.bundlePath;
   const LSREGISTER = '/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister';
   // 1) Quit the running clone (its process command line carries --user-data-dir=<dataDir>).
-  if (inst.dataDir) { try { run('pkill', ['-f', '--', inst.dataDir]); } catch (_) {} }
+  if (inst.dataDir) { try { run('pkill', ['-f', '--', uddNeedle(inst.dataDir)]); } catch (_) {} }
   if (bundle) {
     // 2) Unregister from Launch Services so Finder/Dock/Spotlight forget the app.
     try { run(LSREGISTER, ['-u', bundle]); } catch (_) {}

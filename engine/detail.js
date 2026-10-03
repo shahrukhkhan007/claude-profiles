@@ -2,18 +2,20 @@
 // Live per-profile info + focus/reveal/stop for a specific instance.
 const { execFileSync } = require('child_process');
 const platform = require('./platform');
+const { uddNeedle } = require('./procmatch');
 
 function pidFor(inst) {
   if (process.env.CP_TEST) return null;
+  if (!inst || !inst.dataDir) return null; // never pgrep an empty needle (matches ALL processes)
   try {
     if (process.platform === 'win32') {
       const out = execFileSync('powershell', ['-NoProfile', '-Command',
-        `(Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*${inst.dataDir}*' } | Select-Object -First 1 -ExpandProperty ProcessId)`],
+        `(Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match '${uddNeedle(inst.dataDir)}' } | Select-Object -First 1 -ExpandProperty ProcessId)`],
         { encoding: 'utf8' });
       const n = parseInt(String(out).trim(), 10);
       return Number.isFinite(n) ? n : null;
     }
-    const out = execFileSync('pgrep', ['-f', '--', inst.dataDir], { encoding: 'utf8' });
+    const out = execFileSync('pgrep', ['-f', '--', uddNeedle(inst.dataDir)], { encoding: 'utf8' });
     const n = parseInt(String(out).trim().split(/\s+/)[0], 10);
     return Number.isFinite(n) ? n : null;
   } catch (_) { return null; }
@@ -69,12 +71,13 @@ function reveal(inst) {
 // Quit this profile's running instance. The profile (its data dir) stays; it can be relaunched.
 function stop(inst) {
   if (process.env.CP_TEST) return { ok: true, test: true };
+  if (!inst || !inst.dataDir) return { ok: false }; // never pkill an empty needle
   try {
     if (process.platform === 'win32') {
       execFileSync('powershell', ['-NoProfile', '-Command',
-        `Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*${inst.dataDir}*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }`]);
+        `Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match '${uddNeedle(inst.dataDir)}' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }`]);
     } else {
-      execFileSync('pkill', ['-f', '--', inst.dataDir]);
+      execFileSync('pkill', ['-f', '--', uddNeedle(inst.dataDir)]);
     }
   } catch (_) {}
   return { ok: true };

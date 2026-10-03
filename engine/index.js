@@ -6,6 +6,7 @@ const launcher = require('./launch');
 const custom = require('./custom');
 const info = require('./detail');
 const settings = require('./settings');
+const { log } = require('./log');
 
 function updateAvailable(inst, installedVersion) {
   return (
@@ -34,6 +35,7 @@ async function listInstances() {
     it.running = await launcher.isRunning(it);
     it.updateAvailable = updateAvailable(it, installed);
   }));
+  try { const r = items.filter((i) => i.running).map((i) => i.name); if (r.length) log('[DEBUG] detected running:', r.join(', ')); } catch (_) {}
   return items;
 }
 

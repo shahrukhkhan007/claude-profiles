@@ -98,6 +98,17 @@ export default function App() {
   const openDetail = async (id) => { setDetail(await api.detail(id)); };
 
   useEffect(() => { if (!api) return; api.envInfo().then(setEnv); if (api.appVersion) api.appVersion().then(setAppVersion); refresh(); }, [refresh]);
+  // Keep Running/Stopped live: re-poll every few seconds (only while the window
+  // is visible) and whenever it regains focus, so a profile never shows a stale
+  // 'Running' after its Claude window was closed outside the app.
+  useEffect(() => {
+    if (!api || api.e2e) return undefined;
+    const tick = () => { if (!document.hidden) refresh(); };
+    const id = setInterval(tick, 4000);
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', tick);
+    return () => { clearInterval(id); window.removeEventListener('focus', refresh); document.removeEventListener('visibilitychange', tick); };
+  }, [refresh]);
   useEffect(() => {
     if (!api) return;
     Promise.all([
