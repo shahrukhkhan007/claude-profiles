@@ -8,6 +8,7 @@ const platform = require('./platform');
 const store = require('./instances');
 const info = require('./detail');
 const { log } = require('./log');
+const { uddNeedle } = require('./procmatch');
 
 // After a custom clone launch, if it isn't running a few seconds later it
 // almost certainly crashed at startup — pull the newest crash report so the
@@ -65,6 +66,7 @@ function launch(inst) {
     store.update(inst.id, { lastLaunchedAt: new Date().toISOString(), launches: (inst.launches || 0) + 1 });
     return { ok: true, test: true };
   }
+  if (!inst.dataDir) throw new Error('Profile has no data directory — refusing to launch without isolation');
   // Already running for this data dir? Just bring it to the front.
   if (info.pidFor(inst)) return info.bringToFront(inst);
 
@@ -84,7 +86,18 @@ function launch(inst) {
       }, 3000);
       if (timer && typeof timer.unref === 'function') timer.unref();
     } else {
-      child = spawn('open', ['-n', '-a', 'Claude', '--args', arg], { detached: true, stdio: 'ignore' });
+      // Quick Launch: bypass LaunchServices' single-instance prohibition by
+      // running Claude's inner binary directly, so this profile gets its own
+      // isolated process instead of attaching to an already-running Claude.
+      const app = platform.claudeAppPath();
+      const bin = app ? path.join(app, 'Contents', 'MacOS', 'Claude') : null;
+      if (bin && fs.existsSync(bin)) {
+        log('launch quick (direct exec):', inst.name, 'bin=', bin);
+        child = spawn(bin, [arg], { detached: true, stdio: 'ignore' });
+      } else {
+        log('launch quick (open fallback — inner binary not found):', inst.name);
+        child = spawn('open', ['-n', '-a', 'Claude', '--args', arg], { detached: true, stdio: 'ignore' });
+      }
     }
   } else if (process.platform === 'win32') {
     const exe = platform.claudeAppPath();
@@ -100,11 +113,11 @@ function launch(inst) {
 
 function isRunning(inst) {
   return new Promise((resolve) => {
-    if (!inst || process.env.CP_TEST) return resolve(false);
-    const needle = inst.dataDir;
+    if (!inst || !inst.dataDir || process.env.CP_TEST) return resolve(false); // empty needle would match every process
+    const needle = uddNeedle(inst.dataDir);
     if (process.platform === 'win32') {
       execFile('powershell', ['-NoProfile', '-Command',
-        `Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*${needle}*' } | Select-Object -First 1 ProcessId`],
+        `Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match '${needle}' } | Select-Object -First 1 ProcessId`],
         (err, stdout) => resolve(!err && /\d/.test(stdout || '')));
     } else {
       execFile('pgrep', ['-f', '--', needle], (err, stdout) => resolve(!err && (stdout || '').trim().length > 0));
