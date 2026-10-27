@@ -29,7 +29,11 @@ test('stopped simple profile launches exactly one instance', () => {
   detail.pidFor = () => null;
   lastSpawn = '';
   launch({ id: 'b', dataDir: '/tmp/Claude-x', mode: 'simple' });
-  assert.equal(lastSpawn, 'open -n -a Claude --args --user-data-dir=/tmp/Claude-x');
+  assert.notEqual(lastSpawn, '', 'should launch an instance');
+  assert.ok(lastSpawn.includes('--user-data-dir=/tmp/Claude-x'), 'with its own isolated data dir');
+  // Quick Launch runs Claude's inner binary directly when the app is present
+  // (bypasses the single-instance block); otherwise it falls back to `open`.
+  assert.ok(/MacOS\/Claude --user-data-dir=/.test(lastSpawn) || lastSpawn.startsWith('open -n -a Claude --args'), 'uses inner binary or open fallback');
 });
 
 test('stopped custom profile launches its own bundle', () => {

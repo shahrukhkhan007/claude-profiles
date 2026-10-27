@@ -40,7 +40,7 @@ test('unique ids for two profiles', () => {
   const home = mkdtempSync(join(tmpdir(), 'cp-'));
   const out = run(`
     const s = require(${JSON.stringify(store)});
-    console.log(s.add({ name: 'A' }).id !== s.add({ name: 'B' }).id);
+    console.log(String(s.add({ name: 'A' }).id !== s.add({ name: 'B' }).id));
   `, home);
   assert.equal(out.trim(), 'true');
 });
