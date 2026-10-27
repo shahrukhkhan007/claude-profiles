@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import octoHero from './assets/octo-hero.png';
 import octoTan from './assets/octo-tan.png';
 import octoMark from './assets/octo-mark.png';
@@ -53,6 +53,68 @@ function Swatches({ value, onColor, disabled }) {
     </div>
   );
 }
+function Cropper({ src, onCancel, onDone, out = 512, frame = 240 }) {
+  const F = frame;
+  const imgRef = useRef(null);
+  const dragRef = useRef(null);
+  const [nat, setNat] = useState(null);
+  const [zoom, setZoom] = useState(1);
+  const [off, setOff] = useState({ x: 0, y: 0 });
+
+  useEffect(() => {
+    const im = new Image();
+    im.onload = () => {
+      imgRef.current = im;
+      const w = im.naturalWidth, h = im.naturalHeight;
+      const cov = F / Math.min(w, h);
+      setNat({ w, h }); setZoom(1);
+      setOff({ x: (F - w * cov) / 2, y: (F - h * cov) / 2 });
+    };
+    im.src = src;
+  }, [src, F]);
+
+  if (!nat) {
+    return (
+      <div className="overlay" onClick={onCancel}>
+        <div className="modal crop-modal" onClick={(e) => e.stopPropagation()}><div className="crop-loading">Loading image\u2026</div></div>
+      </div>
+    );
+  }
+  const scale = (F / Math.min(nat.w, nat.h)) * zoom;
+  const dispW = nat.w * scale, dispH = nat.h * scale;
+  const clamp = (o) => ({ x: Math.min(0, Math.max(F - dispW, o.x)), y: Math.min(0, Math.max(F - dispH, o.y)) });
+  const pos = clamp(off);
+  const down = (e) => { dragRef.current = { sx: e.clientX, sy: e.clientY, ox: pos.x, oy: pos.y }; try { e.currentTarget.setPointerCapture(e.pointerId); } catch (_) {} };
+  const move = (e) => { if (!dragRef.current) return; setOff(clamp({ x: dragRef.current.ox + (e.clientX - dragRef.current.sx), y: dragRef.current.oy + (e.clientY - dragRef.current.sy) })); };
+  const up = () => { dragRef.current = null; };
+  const confirm = () => {
+    try {
+      const c = document.createElement('canvas'); c.width = out; c.height = out;
+      const ctx = c.getContext('2d');
+      const r = out / F;
+      ctx.drawImage(imgRef.current, 0, 0, nat.w, nat.h, pos.x * r, pos.y * r, dispW * r, dispH * r);
+      onDone(c.toDataURL('image/png'));
+    } catch (_) { onDone(src); }
+  };
+  return (
+    <div className="overlay" onClick={onCancel}>
+      <div className="modal crop-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-h"><h3>Position icon</h3><p>Drag to move and zoom to fit. The square area becomes the icon.</p></div>
+        <div className="crop-stage">
+          <div className="crop-frame" style={{ width: F, height: F }} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerLeave={up}>
+            <img src={src} alt="" draggable={false} style={{ position: 'absolute', left: pos.x, top: pos.y, width: dispW, height: dispH, maxWidth: 'none' }} />
+            <div className="crop-ring" />
+          </div>
+        </div>
+        <div className="crop-zoom"><span>Zoom</span><input type="range" min="1" max="3" step="0.01" value={zoom} onChange={(e) => setZoom(Number(e.target.value))} /></div>
+        <div className="modal-f">
+          <button className="btn ghost" onClick={onCancel}>Cancel</button>
+          <button className="btn primary" onClick={confirm}>Use icon</button>
+        </div>
+      </div>
+    </div>
+  );
+}
 function Kebab() { return <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>; }
 function PhotoIcon() { return <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4.5" width="18" height="15" rx="3"/><circle cx="8.5" cy="10" r="1.7"/><path d="M4 18l5-5 4 3.5L16.5 13 20 16.5"/></svg>; }
 function SpinRing() {
@@ -76,15 +138,22 @@ export default function App() {
   const [color, setColor] = useState('blue');
   const [iconPath, setIconPath] = useState(null);
   const [iconData, setIconData] = useState(null);
+  const [cropSrc, setCropSrc] = useState(null);
   const [detail, setDetail] = useState(null);
   const [editId, setEditId] = useState(null);
   const [confirmStop, setConfirmStop] = useState(null);
-  const [confirmRemove, setConfirmRemove] = useState(null);
-  const [eraseData, setEraseData] = useState(false);
+  const [confirmPurge, setConfirmPurge] = useState(null);
   const [busy, setBusy] = useState(false);
   const [pickBusy, setPickBusy] = useState(false);
   const [confirmRemoveImg, setConfirmRemoveImg] = useState(false);
   const [rowMenu, setRowMenu] = useState(null);
+  const [bridgeFor, setBridgeFor] = useState(null);
+  const [bridgeList, setBridgeList] = useState(null);
+  const [bridgeSel, setBridgeSel] = useState(() => new Set());
+  const [bridgeResult, setBridgeResult] = useState(null);
+  const [bridgeCollapsed, setBridgeCollapsed] = useState(() => new Set());
+  const [bridgeTab, setBridgeTab] = useState('new');
+  const [bridgeBusy, setBridgeBusy] = useState(false);
   const [theme, setTheme] = useState(() => lsGet('theme', 'system'));
   const [glass, setGlass] = useState(() => lsGet('glass', '0') === '1');
   const [trayGlyph, setTrayGlyph] = useState('auto');
@@ -95,6 +164,30 @@ export default function App() {
   const refresh = useCallback(async () => { if (api) setInstances(await api.list()); }, []);
   const softRefresh = useCallback(() => { refresh(); setTimeout(refresh, 1000); }, [refresh]);
   const launchAndRefresh = useCallback((id) => api.launch(id).then(() => { refresh(); setTimeout(refresh, 1200); }), [refresh]);
+  const openBridge = useCallback((target) => {
+    setBridgeFor(target); setBridgeList(null); setBridgeResult(null); setBridgeSel(new Set()); setBridgeBusy(true);
+    api.sessionList(target.id).then((r) => {
+      setBridgeList(r);
+      if (r && r.ok) {
+        setBridgeSel(new Set(r.sessions.filter((x) => x.status === 'new').map((x) => x.cliSessionId)));
+        const nNew = r.sessions.filter((x) => x.status === 'new').length;
+        const nUpd = r.sessions.filter((x) => x.status === 'stale').length;
+        setBridgeTab(nNew ? 'new' : nUpd ? 'stale' : 'current');
+      }
+      setBridgeBusy(false);
+    });
+  }, []);
+  const toggleSel = (id) => setBridgeSel((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const toggleCollapse = (proj) => setBridgeCollapsed((prev) => { const n = new Set(prev); if (n.has(proj)) n.delete(proj); else n.add(proj); return n; });
+  const toggleGroup = (ids) => setBridgeSel((prev) => { const n = new Set(prev); const all = ids.every((id) => n.has(id)); for (const id of ids) { if (all) n.delete(id); else n.add(id); } return n; });
+  const applyBridge = useCallback(() => {
+    if (!bridgeFor) return; setBridgeBusy(true);
+    api.bridgeApply(bridgeFor.id, [...bridgeSel])
+      .then((r) => { setBridgeResult(r); setBridgeSel(new Set()); refresh(); return api.sessionList(bridgeFor.id); })
+      .then((r) => { if (r && r.ok) setBridgeList(r); setBridgeBusy(false); })
+      .catch(() => setBridgeBusy(false));
+  }, [bridgeFor, bridgeSel, refresh]);
+  const closeBridge = () => { setBridgeFor(null); setBridgeList(null); setBridgeSel(new Set()); setBridgeResult(null); setBridgeBusy(false); setBridgeCollapsed(new Set()); setBridgeTab('new'); };
   const openDetail = async (id) => { setDetail(await api.detail(id)); };
 
   useEffect(() => { if (!api) return; api.envInfo().then(setEnv); if (api.appVersion) api.appVersion().then(setAppVersion); refresh(); }, [refresh]);
@@ -126,8 +219,8 @@ export default function App() {
   useEffect(() => { const r = document.documentElement; if (theme === 'system') r.removeAttribute('data-theme'); else r.setAttribute('data-theme', theme); lsSet('theme', theme); }, [theme]);
   useEffect(() => { document.documentElement.classList.toggle('glass', glass); lsSet('glass', glass ? '1' : '0'); if (api && api.setGlass) api.setGlass(glass); }, [glass]);
 
-  const pick = async () => { setPickBusy(true); try { const r = await api.pickIcon(); if (r && r.dataUrl) { setIconPath(r.path); setIconData(r.dataUrl); } } finally { setPickBusy(false); } };
-  const resetForm = () => { setName(''); setColor('blue'); setIconPath(null); setIconData(null); setConfirmRemoveImg(false); };
+  const pick = async () => { setPickBusy(true); try { const r = await api.pickIcon(); if (r && r.dataUrl) { setIconPath(r.path); setCropSrc(r.dataUrl); } } finally { setPickBusy(false); } };
+  const resetForm = () => { setName(''); setColor('blue'); setIconPath(null); setIconData(null); setConfirmRemoveImg(false); setCropSrc(null); };
   const openAdd = () => { setEditId(null); resetForm(); setAdding(true); };
   const openEditForm = (d) => { setEditId(d.id); setName(d.name); setColor(d.color || 'blue'); setIconData(d.iconData || null); setIconPath(null); setConfirmRemoveImg(false); setDetail(null); setAdding(true); };
   const closeForm = () => { setAdding(false); setEditId(null); resetForm(); };
@@ -145,7 +238,8 @@ export default function App() {
 
   const finishOnboarding = () => { setOnboard(false); setStep(0); if (api && api.setSettings) api.setSettings({ onboardingSeenVersion: appVersion || '0.1.0' }); };
 
-  const rows = instances.filter((i) => i.mode === tab);
+  const rows = instances.filter((i) => i.mode === tab && !i.archived);
+  const archivedRows = instances.filter((i) => i.archived);
   const macClass = env && env.os === 'darwin' ? ' is-mac' : '';
 
   if (!api) return <div className="fallback"><h1>Claude Profiles</h1><p>Run <code>pnpm dev</code> to open this inside the app.</p></div>;
@@ -195,6 +289,30 @@ export default function App() {
         <div className="seg">{[['auto', 'Auto'], ['light', 'Light'], ['dark', 'Dark']].map(([k, l]) => <button key={k} className={trayGlyph === k ? 'on' : ''} onClick={() => { setTrayGlyph(k); if (api && api.setSettings) api.setSettings({ trayGlyph: k }); }}>{l}</button>)}</div></div>
     </section>
   );
+  const Sessions = (
+    <section className="sect">
+      <h3>Session bridging</h3>
+      <p className="about-p">Make this machine’s local Claude Code sessions show up in a profile’s sidebar. It only adds sidebar entries and backs up first, and never changes your conversations. Cloud and web chats can’t be imported.</p>
+      <div className="set-row"><div><div className="lbl">Main Claude</div><div className="hint">Import local sessions into your default Claude</div></div>
+        <button className="btn ghost small" onClick={() => openBridge({ id: 'main', name: 'Main Claude' })}>Import…</button></div>
+      <div className="fld-note">For a specific profile, open its ⋯ menu in the list and choose “Import local sessions”.</div>
+    </section>
+  );
+  const Archived = (
+    <section className="sect">
+      <h3>Archived profiles</h3>
+      {archivedRows.length === 0
+        ? <p className="about-p">No archived profiles. Archiving a profile from its ⋯ menu moves it here and keeps its login and data; you can restore it or delete it for good.</p>
+        : archivedRows.map((it) => (
+          <div className="arch-row" key={it.id}>
+            <Avatar color={it.color} iconData={it.iconData} name={it.name} />
+            <div className="who"><div className="nm">{it.name}</div><div className="sub">{it.mode === 'custom' ? 'Custom profile' : 'Quick-launch profile'}{it.archivedAt ? ' · archived ' + new Date(it.archivedAt).toLocaleDateString() : ''}</div></div>
+            <button className="btn ghost small" onClick={() => api.restore(it.id).then(refresh)}>Restore</button>
+            <button className="btn danger small" onClick={() => setConfirmPurge(it)}>Delete permanently</button>
+          </div>
+        ))}
+    </section>
+  );
   const About = (
     <section className="sect">
       <div className="about-hero"><img className="about-icon" src={octoHero} alt="Claude Profiles" />
@@ -206,16 +324,16 @@ export default function App() {
     </section>
   );
 
-  if (screen === 'settings' || screen === 'about') {
+  if (screen === 'settings' || screen === 'about' || screen === 'archive') {
     return (
       <div className={'app' + macClass}>
         {Splash}
         {onboard && Onboarding}
         <header className="topbar">
           <button className="icon-btn back" onClick={() => setScreen('home')} title="Back">‹</button>
-          <div className="pagetitle">{screen === 'settings' ? 'Settings' : 'About'}</div><div className="spacer" />
+          <div className="pagetitle">{screen === 'settings' ? 'Settings' : screen === 'archive' ? 'Archived' : 'About'}</div><div className="spacer" />
         </header>
-        <main className="page wide">{screen === 'settings' ? Appearance : About}</main>
+        <main className="page wide">{screen === 'settings' ? <>{Appearance}{Sessions}</> : screen === 'archive' ? Archived : About}</main>
         <footer className="statusbar"><span className="cd" />{env ? <>Claude {env.version || '—'} · {env.claudeApp ? 'detected' : 'not found'}</> : '—'}<button className="credit" onClick={() => ext(LINKEDIN)} title="Shahrukh Khan on LinkedIn">Built by <b>Shahrukh Khan</b></button></footer>
       </div>
     );
@@ -234,6 +352,7 @@ export default function App() {
           {menuOpen && (<>
             <div className="menu-scrim" onClick={() => setMenuOpen(false)} />
             <div className="menu">
+              <button onClick={() => { setScreen('archive'); setMenuOpen(false); }}>Archived</button>
               <button onClick={() => { setScreen('settings'); setMenuOpen(false); }}>Settings</button>
               <button onClick={() => { setScreen('about'); setMenuOpen(false); }}>About</button>
             </div>
@@ -337,7 +456,7 @@ export default function App() {
                   {detail.running ? <button className="btn primary" onClick={() => api.launch(detail.id)}>Bring to front</button> : <button className="btn primary" onClick={() => { launchAndRefresh(detail.id); setDetail(null); }}>Launch</button>}
                   {detail.running && <button className="btn danger" onClick={() => setConfirmStop(detail)}>Stop</button>}
                   {detail.mode === 'custom' && <button className={'btn ' + (detail.updateAvailable ? 'amber' : 'ghost')} onClick={() => api.rebuild(detail.id).then(() => { setDetail(null); refresh(); })}>Rebuild</button>}
-                  <button className="btn danger" onClick={() => setConfirmRemove(detail)}>Remove</button>
+                  <button className="btn ghost" onClick={() => { api.archive(detail.id).then(() => { setDetail(null); refresh(); }); }}>Archive</button>
                 </div>
               </>
             )}
@@ -354,23 +473,116 @@ export default function App() {
             <div className="menu-scrim" onClick={close} />
             <div className="rowmenu" style={{ top: rowMenu.y + 6, left: rowMenu.x }}>
               <button onClick={() => { close(); openEditForm(it); }}>Edit</button>
-              <button onClick={() => { close(); setEraseData(false); setConfirmRemove(it); }}>Remove, keep data</button>
-              <button className="danger" onClick={() => { close(); setEraseData(true); setConfirmRemove(it); }}>Delete everything</button>
+              <button onClick={() => { close(); openBridge({ id: it.id, name: it.name }); }}>Import local sessions</button>
+              <button onClick={() => { close(); api.archive(it.id).then(refresh); }}>Archive</button>
             </div>
           </>
         );
       })()}
-      {confirmRemove && (
-        <div className="overlay" onClick={() => { setConfirmRemove(null); setEraseData(false); }}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-h"><h3>Remove “{confirmRemove.name}”?</h3>
-              <p>{confirmRemove.mode === 'custom'
-                ? 'This removes it from the list and deletes its app clone and Dock icon.'
-                : 'This removes it from the list.'} Its login and history are kept by default, so creating a profile named “{confirmRemove.name}” again later restores this session.</p></div>
-            <label className="chk"><input type="checkbox" checked={eraseData} onChange={(e) => setEraseData(e.target.checked)} /><span>Also permanently delete its login and history (can’t be undone)</span></label>
+      {bridgeFor && (
+        <div className="overlay" onClick={closeBridge}>
+          <div className="modal bwide" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-h"><h3>Import sessions into “{bridgeFor.name}”</h3>
+              <p>Pick which of this machine’s local Claude Code sessions to show in this profile. It only adds sidebar entries and backs up first, and never changes your conversations. The profile must be fully quit.</p></div>
+            <div className="bridge-body">
+              {bridgeBusy && !bridgeList && (
+                <div className="sesslist">
+                  {[0, 1, 2, 3, 4].map((i) => (
+                    <div className="sess skel" key={i}>
+                      <span className="sk-box" />
+                      <span className="sess-main"><span className="sk-line w1" /><span className="sk-line w2" /></span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {bridgeList && !bridgeList.ok && <div className="bridge-msg err">{bridgeList.error}</div>}
+              {bridgeList && bridgeList.ok && bridgeList.running && <div className="bridge-msg err">Quit “{bridgeFor.name}” first, then reopen this.</div>}
+              {bridgeList && bridgeList.ok && !bridgeList.running && (() => {
+                const all = bridgeList.sessions;
+                const nNew = all.filter((x) => x.status === 'new').length;
+                const nUpd = all.filter((x) => x.status === 'stale').length;
+                const nCur = all.filter((x) => x.status === 'current').length;
+                const inTab = all.filter((x) => x.status === bridgeTab);
+                const groups = {};
+                for (const x of inTab) (groups[x.project] = groups[x.project] || []).push(x);
+                const emptyMsg = bridgeTab === 'new' ? 'No new sessions to import.' : bridgeTab === 'stale' ? 'No updates. Everything imported here is up to date.' : 'Nothing imported into this profile yet.';
+                return (
+                  <>
+                    {bridgeResult && <div className="bridge-msg ok"><b>{bridgeResult.written || 0}</b> imported{bridgeResult.refreshed ? ', ' + bridgeResult.refreshed + ' updated' : ''}. Fully quit and reopen “{bridgeFor.name}” to see the changes.</div>}
+                    <div className="sess-legend">Conversations are a single shared file, so their content stays current across profiles. This only sets what “{bridgeFor.name}” shows in its sidebar.</div>
+                    <div className="bridge-tabs">
+                      {[['new', 'New', nNew], ['stale', 'Updates', nUpd], ['current', 'Up to date', nCur]].map(([k, l, c]) => (
+                        <button key={k} type="button" className={'btab' + (bridgeTab === k ? ' on' : '')} onClick={() => setBridgeTab(k)}>{l} <span className="btab-n">{c}</span></button>
+                      ))}
+                    </div>
+                    {bridgeTab !== 'current' && (
+                      <div className="bridge-tools">
+                        <button className="linklike" onClick={() => setBridgeSel((prev) => { const n = new Set(prev); inTab.forEach((x) => n.add(x.cliSessionId)); return n; })}>Select all in view</button>
+                        <button className="linklike" onClick={() => setBridgeSel(new Set())}>Clear selection</button>
+                        <span className="bridge-count">{bridgeSel.size} selected</span>
+                      </div>
+                    )}
+                    {inTab.length === 0
+                      ? (
+                        <div className="sess-empty">
+                          <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7l2-3h14l2 3" /><path d="M3 7v11a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7" /><path d="M8 12h8" /></svg>
+                          <div>{emptyMsg}</div>
+                        </div>
+                      )
+                      : (
+                        <div className="sesslist">
+                          {Object.keys(groups).sort().map((proj) => {
+                            const list = groups[proj];
+                            const actionable = list.filter((x) => x.status !== 'current').map((x) => x.cliSessionId);
+                            const allSel = actionable.length > 0 && actionable.every((id) => bridgeSel.has(id));
+                            const collapsed = bridgeCollapsed.has(proj);
+                            return (
+                              <div className="sessgroup" key={proj}>
+                                <div className="sessgroup-h">
+                                  <input type="checkbox" disabled={actionable.length === 0} checked={allSel} onChange={() => toggleGroup(actionable)} />
+                                  <button type="button" className="sessgroup-name" onClick={() => toggleCollapse(proj)} title={proj}>
+                                    <span className="caret">{collapsed ? '▸' : '▾'}</span><span className="sessgroup-label">{proj}</span>
+                                  </button>
+                                  <span className="sessgroup-count">{list.length}</span>
+                                </div>
+                                {!collapsed && list.map((x) => (
+                                  <label key={x.cliSessionId} className={'sess nested' + (x.status === 'current' ? ' done' : '')}>
+                                    <input type="checkbox" disabled={x.status === 'current'} checked={bridgeSel.has(x.cliSessionId)} onChange={() => toggleSel(x.cliSessionId)} />
+                                    <span className="sess-main"><span className="sess-title" title={x.title}>{x.title}</span><span className="sess-meta">{x.lastActivityAt ? new Date(x.lastActivityAt).toLocaleDateString() : ''}</span></span>
+                                  </label>
+                                ))}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                  </>
+                );
+              })()}
+            </div>
             <div className="modal-f">
-              <button className="btn ghost" onClick={() => { setConfirmRemove(null); setEraseData(false); }}>Cancel</button>
-              <button className={'btn ' + (eraseData ? 'danger' : 'primary')} onClick={() => { const id = confirmRemove.id; api.remove(id, !eraseData).then(() => { setConfirmRemove(null); setEraseData(false); setDetail(null); refresh(); }); }}>{eraseData ? 'Erase everything' : 'Remove, keep data'}</button>
+              <button className="btn ghost" onClick={closeBridge}>{bridgeResult ? 'Close' : 'Cancel'}</button>
+              {bridgeList && bridgeList.ok && !bridgeList.running && (() => {
+                const st = Object.fromEntries(bridgeList.sessions.map((x) => [x.cliSessionId, x.status]));
+                const selNew = [...bridgeSel].filter((id) => st[id] === 'new').length;
+                const selUpd = [...bridgeSel].filter((id) => st[id] === 'stale').length;
+                const n = selNew + selUpd;
+                const label = selUpd === 0 ? `Import ${n}` : selNew === 0 ? `Update ${n}` : `Sync ${n}`;
+                return <button className="btn primary" disabled={bridgeBusy || n === 0} onClick={applyBridge}>{bridgeBusy ? 'Working…' : label}</button>;
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
+      {cropSrc && <Cropper src={cropSrc} onCancel={() => setCropSrc(null)} onDone={(d) => { setIconData(d); setCropSrc(null); }} />}
+      {confirmPurge && (
+        <div className="overlay" onClick={() => setConfirmPurge(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-h"><h3>Delete “{confirmPurge.name}” permanently?</h3>
+              <p>This erases its login, history and data folder{confirmPurge.mode === 'custom' ? ', and removes its app clone' : ''}. This can’t be undone.</p></div>
+            <div className="modal-f">
+              <button className="btn ghost" onClick={() => setConfirmPurge(null)}>Cancel</button>
+              <button className="btn danger" onClick={() => { const id = confirmPurge.id; api.remove(id, false).then(() => { setConfirmPurge(null); refresh(); }); }}>Delete permanently</button>
             </div>
           </div>
         </div>

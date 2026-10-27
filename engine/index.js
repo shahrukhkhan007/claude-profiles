@@ -6,6 +6,7 @@ const launcher = require('./launch');
 const custom = require('./custom');
 const info = require('./detail');
 const settings = require('./settings');
+const bridge = require('./bridge');
 
 function updateAvailable(inst, installedVersion) {
   return (
@@ -91,10 +92,44 @@ function rebuild(id) {
   return store.update(id, custom.rebuild(it));
 }
 
+async function sessionBridge(id, opts = {}) {
+  const isMain = id === 'main' || id === '__main__';
+  const inst = isMain ? { id: 'main', name: 'Main Claude', dataDir: platform.findDataDir() } : store.get(id);
+  if (!inst || !inst.dataDir) return { ok: false, error: isMain ? 'Could not find the main Claude data folder.' : 'Profile not found' };
+  const running = await launcher.isRunning(inst);
+  if (running) return { ok: false, error: 'Quit this profile first. Its Claude must be fully closed before importing sessions.' };
+  return bridge.bridgeInto(inst.dataDir, { apply: !!opts.apply, only: opts.only });
+}
+
+async function sessionList(id) {
+  const isMain = id === 'main' || id === '__main__';
+  const inst = isMain ? { id: 'main', name: 'Main Claude', dataDir: platform.findDataDir() } : store.get(id);
+  if (!inst || !inst.dataDir) return { ok: false, error: isMain ? 'Could not find the main Claude data folder.' : 'Profile not found' };
+  const running = await launcher.isRunning(inst);
+  const res = bridge.listSessions(inst.dataDir);
+  return { ...res, running, name: inst.name };
+}
+
+function archiveInstance(id) {
+  const it = store.get(id);
+  if (!it) return { ok: false };
+  try { info.stop(it); } catch (_) {}
+  if (it.mode === 'custom') { try { custom.remove(it); } catch (_) {} }
+  return store.update(id, { archived: true, archivedAt: new Date().toISOString(), bundlePath: null });
+}
+
+function restoreInstance(id) {
+  const it = store.get(id);
+  if (!it) return { ok: false };
+  let patch = { archived: false, archivedAt: null };
+  if (it.mode === 'custom') { try { patch = { ...patch, ...custom.create(it) }; } catch (e) { patch.buildError = String((e && e.message) || e); } }
+  return store.update(id, patch);
+}
+
 module.exports = {
   updateAvailable,
   updateInstance,
-  envInfo, listInstances, addInstance, removeInstance,
+  envInfo, listInstances, addInstance, removeInstance, sessionBridge, sessionList, archiveInstance, restoreInstance,
   launch, status, getDetail, bringToFront, reveal, stop, rebuild,
   getSettings: settings.getSettings, setSettings: settings.setSettings,
 };

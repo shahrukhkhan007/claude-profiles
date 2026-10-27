@@ -98,6 +98,16 @@ there are no confusing toggles:
 Add a profile with **+ Add**, pick a colour or an image, and **Launch**. Each
 profile keeps a completely separate login, history, and settings.
 
+## Troubleshooting
+
+### macOS asks for your login password when opening a Custom profile
+
+The first time you open a Custom profile, macOS may show a dialog such as "Claude wants to use your confidential information stored in your keychain" and ask for your Mac login password. This is macOS Keychain, not Claude Profiles. A Custom profile is a renamed copy of the Claude app with its own identity, so macOS treats it as a new app and asks permission the first time it reads Keychain items.
+
+What to do: enter your **Mac login password** (the one you sign in to the Mac with, not your Claude account password) and click **Always Allow**. You only need to do this once per profile. If you click Deny the profile still opens, but it may not remember some logins; reopen it and choose Always Allow to clear that up.
+
+If the prompt keeps coming back or the password is not accepted: confirm you are typing your macOS login password with Caps Lock off, and check that your **login** keychain is unlocked. Open **Keychain Access**; if the login keychain shows a lock icon, click it to unlock with your login password, then open the profile again.
+
 ## How it works
 
 Each profile is just Claude launched with its own `--user-data-dir`, so it keeps
