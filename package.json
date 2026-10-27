@@ -1,6 +1,6 @@
 {
   "name": "claude-profiles",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "private": true,
   "description": "Run several separate Claude Desktop logins side by side on one machine. One clean app, cross-platform (macOS, Windows, Linux).",
   "author": {
