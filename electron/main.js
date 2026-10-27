@@ -51,6 +51,7 @@ function showManager(screen) {
 async function buildTrayMenu() {
   let items = [];
   try { items = await engine.listInstances(); } catch (_) {}
+  items = items.filter((i) => !i.archived);
   const running = items.filter((i) => i.running).length;
   const row = (i) => ({
     label: `${i.running ? '●' : '○'}  ${i.name}${i.updateAvailable ? '  (update)' : ''}`,
@@ -115,6 +116,11 @@ function registerIpc() {
   ipcMain.handle('instances:rebuild', async (_e, id) => { const r = engine.rebuild(id); refreshTray(); return r; });
   ipcMain.handle('instances:status', (_e, id) => engine.status(id));
   ipcMain.handle('instances:detail', (_e, id) => engine.getDetail(id));
+  ipcMain.handle('instances:bridgePreview', (_e, id) => engine.sessionBridge(id, { apply: false }));
+  ipcMain.handle('instances:bridgeApply', async (_e, arg) => { const id = arg && typeof arg === 'object' ? arg.id : arg; const only = arg && typeof arg === 'object' ? arg.only : null; const r = await engine.sessionBridge(id, { apply: true, only }); refreshTray(); return r; });
+  ipcMain.handle('instances:sessionList', (_e, id) => engine.sessionList(id));
+  ipcMain.handle('instances:archive', async (_e, id) => { const r = engine.archiveInstance(id); refreshTray(); return r; });
+  ipcMain.handle('instances:restore', async (_e, id) => { const r = engine.restoreInstance(id); refreshTray(); return r; });
   ipcMain.handle('instances:front', (_e, id) => engine.bringToFront(id));
   ipcMain.handle('instances:reveal', (_e, id) => engine.reveal(id));
   ipcMain.handle('instances:stop', async (_e, id) => { const r = engine.stop(id); refreshTray(); return r; });

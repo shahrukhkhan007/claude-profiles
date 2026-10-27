@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 
-test('boots, adds a profile, opens detail, removes it', async () => {
+test('boots, adds a profile, opens detail, archives it', async () => {
   const home = mkdtempSync(join(tmpdir(), 'cp-e2e-'));      // hermetic profiles.json
   const app = await electron.launch({
     args: [join(root, 'electron/main.js')],
@@ -28,10 +28,8 @@ test('boots, adds a profile, opens detail, removes it', async () => {
   await expect(win.locator('.sheet2')).toBeVisible();
   await expect(win.locator('.d-name')).toContainText('E2E Test');
 
-  // Remove now asks for confirmation: open the dialog from the detail sheet, then confirm.
-  await win.locator('.sheet2').getByRole('button', { name: 'Remove' }).click();
-  await expect(win.locator('.overlay .modal')).toBeVisible();
-  await win.locator('.modal').getByRole('button', { name: 'Remove' }).click();
+  // Deleting now goes through Archive: archive from the detail sheet; it leaves the main list.
+  await win.locator('.sheet2').getByRole('button', { name: 'Archive' }).click();
   await expect(win.locator('.card', { hasText: 'E2E Test' })).toHaveCount(0);
 
   await app.close();

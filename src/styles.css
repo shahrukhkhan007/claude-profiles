@@ -170,7 +170,7 @@ body{font-family:var(--sans);background:var(--bg);color:var(--ink);-webkit-font-
 .kv.full{grid-column:1/-1}
 .kv .k{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--ink3)}
 .kv .v{font-size:13.5px;color:var(--ink);font-variant-numeric:tabular-nums;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.kv .v.mono{font-family:ui-monospace,Menlo,monospace;font-size:12px;color:var(--ink2)}
+.kv .v.mono{font-family:ui-monospace,Menlo,monospace;font-size:12px;color:var(--ink2);white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere;word-break:break-word;line-height:1.5}
 .d-actions{display:flex;gap:8px;flex-wrap:wrap;padding:16px}
 
 /* modal (confirm + settings) */
@@ -311,3 +311,89 @@ body{font-family:var(--sans);background:var(--bg);color:var(--ink);-webkit-font-
 /* Remove dialog: keep-data vs erase choice */
 .chk{display:flex;align-items:flex-start;gap:9px;margin:2px 0 4px;padding:0 20px;font-size:13px;line-height:1.45;color:var(--ink2);cursor:pointer}
 .chk input{width:15px;height:15px;margin-top:2px;accent-color:var(--accent);cursor:pointer;flex:none}
+
+/* session-bridge import modal */
+.bridge-body{padding:2px 20px 6px;min-height:22px}
+.bridge-msg{font-size:13px;color:var(--ink2);line-height:1.5}
+.bridge-msg b{color:var(--ink)}
+.bridge-msg.err{color:var(--danger)}
+.bridge-msg.ok{color:var(--green)}
+
+/* session picker + archive screen */
+.bridge-tools{display:flex;align-items:center;gap:14px;padding:4px 20px 6px}
+.bridge-tools .linklike{background:none;border:0;color:var(--accent);font:600 12.5px var(--sans);cursor:pointer;padding:0}
+.bridge-tools .linklike:hover{text-decoration:underline}
+.bridge-count{margin-left:auto;font-size:12px;color:var(--ink3)}
+.sesslist{max-height:300px;overflow:auto;padding:0 12px 8px;display:flex;flex-direction:column;gap:2px}
+.sess{display:flex;align-items:center;gap:10px;padding:8px;border-radius:9px;cursor:pointer}
+.sess:hover{background:var(--hover)}
+.sess input{accent-color:var(--accent);flex:none;width:15px;height:15px}
+.sess-main{display:flex;flex-direction:column;min-width:0;flex:1}
+.sess-title{font-size:13px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sess-meta{font-size:11.5px;color:var(--ink3)}
+.sess.done{opacity:.55}
+.sess-tag{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--ink3);border:1px solid var(--line);border-radius:6px;padding:2px 6px;flex:none}
+.arch-row{display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid var(--line)}
+.arch-row .who{flex:1;min-width:0}
+.arch-row:last-child{border-bottom:0}
+
+/* session picker loading skeleton */
+.sesslist{min-height:132px}
+.sess.skel{cursor:default}
+.sess.skel .sess-main{gap:6px}
+.sk-box{width:15px;height:15px;border-radius:4px;flex:none;background:var(--line)}
+.sk-line{display:block;height:10px;border-radius:5px;background:var(--line)}
+.sk-line.w1{width:62%}
+.sk-line.w2{width:34%;height:8px}
+@keyframes skelpulse{0%,100%{opacity:.5}50%{opacity:1}}
+.sess.skel .sk-box,.sess.skel .sk-line{animation:skelpulse 1.2s ease-in-out infinite}
+@media (prefers-reduced-motion:reduce){.sess.skel .sk-box,.sess.skel .sk-line{animation:none}}
+
+/* session picker: project groups */
+.sess-legend{font-size:11.5px;color:var(--ink3);padding:0 20px 6px}
+.sessgroup{margin-bottom:1px}
+.sessgroup-h{display:flex;align-items:center;gap:9px;padding:6px 8px;border-radius:9px}
+.sessgroup-h:hover{background:var(--hover)}
+.sessgroup-h input{accent-color:var(--accent);flex:none;width:15px;height:15px}
+.sessgroup-name{display:flex;align-items:center;gap:6px;min-width:0;flex:1;background:none;border:0;cursor:pointer;color:var(--ink);font:700 12px var(--sans);text-align:left;padding:0}
+.sessgroup-name .caret{color:var(--ink3);font-size:10px;flex:none}
+.sessgroup-label{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;direction:rtl}
+.sessgroup-count{font-size:11px;color:var(--ink3);flex:none;margin-left:auto}
+.sess.nested{margin-left:22px}
+
+/* session picker: update-available tag */
+.sess-tag.warn{color:var(--accent);border-color:color-mix(in srgb, var(--accent) 45%, transparent)}
+.sess.done .sess-tag{opacity:1}
+
+/* session picker: status tabs */
+.bridge-tabs{display:flex;gap:6px;padding:2px 20px 8px}
+.btab{display:inline-flex;align-items:center;gap:6px;font:600 12.5px var(--sans);color:var(--ink2);background:transparent;border:1px solid var(--line);border-radius:999px;padding:5px 11px;cursor:pointer}
+.btab:hover{background:var(--hover)}
+.btab.on{background:var(--accent);border-color:transparent;color:#fff}
+.btab-n{font-size:11px;background:color-mix(in srgb, var(--ink) 10%, transparent);border-radius:999px;padding:0 6px;min-width:16px;text-align:center}
+.btab.on .btab-n{background:rgba(255,255,255,.28);color:#fff}
+
+/* wider, roomier session-import modal */
+.modal.bwide{max-width:min(660px, 94vw)}
+.modal.bwide .bridge-body{padding-bottom:2px}
+.modal.bwide .sesslist{max-height:min(48vh, 420px)}
+.modal.bwide .sess{padding:9px 10px}
+.modal.bwide .sess-title{font-size:13.5px}
+.btab{white-space:nowrap}
+
+/* icon crop + zoom */
+.crop-modal{max-width:340px}
+.crop-stage{display:flex;justify-content:center;padding:8px 20px 12px}
+.crop-frame{position:relative;overflow:hidden;border-radius:22px;background:var(--hover);cursor:grab;touch-action:none;box-shadow:inset 0 0 0 1px var(--line)}
+.crop-frame:active{cursor:grabbing}
+.crop-frame img{user-select:none;-webkit-user-drag:none}
+.crop-ring{position:absolute;inset:0;border-radius:22px;box-shadow:inset 0 0 0 2px rgba(255,255,255,.65);pointer-events:none}
+.crop-zoom{display:flex;align-items:center;gap:12px;padding:0 20px 10px}
+.crop-zoom span{font-size:12px;color:var(--ink2);flex:none}
+.crop-zoom input{flex:1;accent-color:var(--accent)}
+.crop-loading{padding:44px 24px;text-align:center;color:var(--ink2);font-size:13px}
+
+/* session picker: stable height + empty state */
+.modal.bwide .sesslist{min-height:248px}
+.sess-empty{min-height:248px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:24px;text-align:center;color:var(--ink3);font-size:13px}
+.sess-empty svg{color:var(--ink3);opacity:.7}
