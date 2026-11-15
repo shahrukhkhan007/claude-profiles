@@ -167,8 +167,60 @@ function transcriptMeta(jsonlPath, maxLines = 200) {
     if (meta.cwd !== null && meta.title !== null && meta.model !== null && meta.createdAt !== null) break;
   }
   if (meta.createdAt === null) meta.createdAt = Math.round(st.ctimeMs || st.mtimeMs);
+  // The name Claude shows in its sidebar is stored in the transcript as a
+  // `custom-title` entry (rewritten on every rename, so the LAST one wins). The
+  // first user message is only a fallback for transcripts that have no name.
+  const named = sessionName(lines);
+  meta.firstMessage = meta.title;
+  if (named) meta.title = named.slice(0, 120);
+  meta.named = !!named;
   if (!meta.title) meta.title = `Recovered session ${stem.slice(0, 8)}`;
   return meta;
+}
+
+// Last session name recorded in a transcript: `custom-title` (Claude desktop /
+// `/rename`), then `agent-name`, then legacy `summary` entries.
+function sessionName(lines) {
+  const found = { 'custom-title': null, 'agent-name': null, summary: null };
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const l = lines[i];
+    if (!l || (l.indexOf('custom-title') < 0 && l.indexOf('agent-name') < 0 && l.indexOf('"summary"') < 0)) continue;
+    let e; try { e = JSON.parse(l.trim()); } catch (_) { continue; }
+    if (!e || !(e.type in found) || found[e.type]) continue;
+    const v = e.type === 'custom-title' ? e.customTitle : e.type === 'agent-name' ? e.agentName : e.summary;
+    if (typeof v === 'string' && v.trim()) found[e.type] = v.trim();
+    if (found['custom-title']) break;
+  }
+  return found['custom-title'] || found['agent-name'] || found.summary || null;
+}
+
+// Titles other Claude data dirs (main Claude + other profiles) already show for
+// each session, keyed by cliSessionId. Used when a transcript carries no name.
+function titleHints(dataDirs) {
+  const out = {};
+  for (const dir of dataDirs || []) {
+    if (!dir || !safeIsDir(dir)) continue;
+    const { indexDirs } = findIndexDirs(dir);
+    for (const d of indexDirs) {
+      for (const f of globLocal(d)) {
+        const data = readJson(f);
+        const cli = data && (data.cliSessionId || data.sessionId);
+        if (!cli || !data.title) continue;
+        const prev = out[cli];
+        if (!prev || (data.lastActivityAt || 0) > prev.at) out[cli] = { title: String(data.title), at: data.lastActivityAt || 0 };
+      }
+    }
+  }
+  const map = {};
+  for (const k of Object.keys(out)) map[k] = out[k].title;
+  return map;
+}
+
+// Final title: transcript name > another profile's sidebar name > first message.
+function resolveTitle(meta, hints) {
+  if (meta.named) return meta.title;
+  const h = hints && hints[meta.cliSessionId];
+  return h || meta.title;
 }
 
 function buildRegistration(template, meta) {
@@ -277,12 +329,14 @@ function bridgeInto(appSupport, opts = {}) {
   for (const c of newCli) {
     const meta = transcriptMeta(byCli[c]);
     if (!meta) continue;
+    meta.title = resolveTitle(meta, opts.titleHints);
     const reg = buildRegistration(template, meta);
     try { fs.writeFileSync(path.join(target, `${reg.sessionId}.json`), JSON.stringify(reg, null, 2), 'utf8'); written++; } catch (_) {}
   }
   for (const c of refreshCli) {
     const meta = transcriptMeta(byCli[c]);
     if (!meta) continue;
+    meta.title = resolveTitle(meta, opts.titleHints);
     if (refreshRegistration(existing[c].file, meta)) refreshed++;
   }
   return { ...base, applied: true, written, refreshed, backup: backupPath };
@@ -301,13 +355,18 @@ function listSessions(appSupport, opts = {}) {
   for (const t of scan.list) {
     const meta = transcriptMeta(t);
     if (!meta) continue;
+    meta.title = resolveTitle(meta, opts.titleHints);
     const reg = existing[meta.cliSessionId];
     const registered = !!reg;
-    const stale = registered && (meta.lastActivityAt || 0) > (reg.lastActivityAt || 0) + 2000;
+    // Stale = transcript has newer activity, or the session was renamed since import.
+    const renamed = registered && meta.named && reg.title && reg.title !== meta.title;
+    const stale = registered && (renamed || (meta.lastActivityAt || 0) > (reg.lastActivityAt || 0) + 2000);
     sessions.push({
       cliSessionId: meta.cliSessionId,
       title: meta.title,
       project: path.basename(path.dirname(t)),
+      cwd: meta.cwd || null,
+      firstMessage: meta.firstMessage || null,
       lastActivityAt: meta.lastActivityAt,
       createdAt: meta.createdAt,
       registered,
@@ -321,5 +380,5 @@ function listSessions(appSupport, opts = {}) {
 module.exports = {
   bridgeInto, DEFAULT_PROJECTS, BACKUP_ROOT,
   findIndexDirs, currentAccountUuid, bestTemplate, transcriptMeta, listSessions,
-  buildRegistration, scanTranscripts, pickTarget,
+  buildRegistration, scanTranscripts, pickTarget, sessionName, titleHints, resolveTitle,
 };
