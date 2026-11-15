@@ -38,6 +38,15 @@ const lsGet = (k, d) => { try { return localStorage.getItem(k) ?? d; } catch (_)
 const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (_) {} };
 const isHex = (c) => typeof c === 'string' && c.startsWith('#');
 function initials(n) { return String(n).trim().slice(0, 1).toUpperCase() || 'C'; }
+// Friendly project label: the session's working folder name (falls back to the
+// encoded ~/.claude/projects dir name). The full path stays in the tooltip.
+function projLabel(list, key) {
+  const cwd = (list.find((x) => x.cwd) || {}).cwd;
+  if (!cwd) return key;
+  const parts = String(cwd).split(/[\\/]/).filter(Boolean);
+  return parts.slice(-2).join('/') || key;
+}
+const SESS_SORTS = [['recent', 'Most recent'], ['oldest', 'Oldest'], ['name', 'Name A–Z'], ['project', 'Project']];
 function fmt(dt) { try { return dt ? new Date(dt).toLocaleString() : '—'; } catch (_) { return '—'; } }
 
 function Avatar({ color, iconData, name, lg, sm }) {
@@ -154,11 +163,17 @@ export default function App() {
   const [bridgeCollapsed, setBridgeCollapsed] = useState(() => new Set());
   const [bridgeTab, setBridgeTab] = useState('new');
   const [bridgeBusy, setBridgeBusy] = useState(false);
+  const [bridgeQuery, setBridgeQuery] = useState('');
+  const [bridgeSort, setBridgeSort] = useState('recent');
+  const [hiddenProjects, setHiddenProjects] = useState(() => new Set());
   const [theme, setTheme] = useState(() => lsGet('theme', 'system'));
   const [glass, setGlass] = useState(() => lsGet('glass', '0') === '1');
   const [trayGlyph, setTrayGlyph] = useState('auto');
   const [splash, setSplash] = useState(() => !(api && api.e2e));
   const [onboard, setOnboard] = useState(false);
+  // Self-update: info from GitHub Releases + where we are in check → download → install.
+  const [upd, setUpd] = useState({ phase: 'idle', info: null, progress: 0, error: null, dismissed: false });
+  const [autoUpd, setAutoUpd] = useState(true);
   const [step, setStep] = useState(0);
 
   const refresh = useCallback(async () => { if (api) setInstances(await api.list()); }, []);
@@ -187,7 +202,14 @@ export default function App() {
       .then((r) => { if (r && r.ok) setBridgeList(r); setBridgeBusy(false); })
       .catch(() => setBridgeBusy(false));
   }, [bridgeFor, bridgeSel, refresh]);
-  const closeBridge = () => { setBridgeFor(null); setBridgeList(null); setBridgeSel(new Set()); setBridgeResult(null); setBridgeBusy(false); setBridgeCollapsed(new Set()); setBridgeTab('new'); };
+  const saveHidden = (next) => { setHiddenProjects(next); if (api && api.setSettings) api.setSettings({ hiddenProjects: [...next] }); };
+  const hideProject = (proj, ids) => {
+    const n = new Set(hiddenProjects); n.add(proj); saveHidden(n);
+    setBridgeSel((prev) => { const m = new Set(prev); for (const id of ids) m.delete(id); return m; });
+  };
+  const showProject = (proj) => { const n = new Set(hiddenProjects); n.delete(proj); saveHidden(n); };
+  const changeSort = (v) => { setBridgeSort(v); if (api && api.setSettings) api.setSettings({ sessionSort: v }); };
+  const closeBridge = () => { setBridgeQuery(''); setBridgeFor(null); setBridgeList(null); setBridgeSel(new Set()); setBridgeResult(null); setBridgeBusy(false); setBridgeCollapsed(new Set()); setBridgeTab('new'); };
   const openDetail = async (id) => { setDetail(await api.detail(id)); };
 
   useEffect(() => { if (!api) return; api.envInfo().then(setEnv); if (api.appVersion) api.appVersion().then(setAppVersion); refresh(); }, [refresh]);
@@ -209,11 +231,25 @@ export default function App() {
       api.appVersion ? api.appVersion() : Promise.resolve(''),
     ]).then(([s, v]) => {
       if (s && s.trayGlyph) setTrayGlyph(s.trayGlyph);
+      if (s && Array.isArray(s.hiddenProjects)) setHiddenProjects(new Set(s.hiddenProjects));
+      if (s && s.sessionSort) setBridgeSort(s.sessionSort);
+      if (s && s.autoUpdateCheck === false) setAutoUpd(false);
       if (v) setAppVersion(v);
       // First-run tour: shown once per app version (per build); reappears after a version change.
       if (!(api && api.e2e) && (!s || s.onboardingSeenVersion !== (v || ''))) setOnboard(true);
     });
     return api.onNav ? api.onNav((sc) => setScreen(sc === 'settings' || sc === 'about' ? sc : 'home')) : undefined;
+  }, []);
+  useEffect(() => {
+    if (!api || !api.onUpdate) return undefined;
+    api.updateState().then((st) => {
+      if (!st) return;
+      setUpd((u) => ({ ...u, info: st.info || u.info, phase: st.downloading ? 'downloading' : st.downloaded ? 'ready' : u.phase, progress: st.progress || 0 }));
+    });
+    return api.onUpdate((ev) => {
+      if (ev.type === 'available') setUpd((u) => ({ ...u, info: ev.info }));
+      if (ev.type === 'progress') setUpd((u) => ({ ...u, phase: 'downloading', progress: ev.progress }));
+    });
   }, []);
   useEffect(() => { const t = setTimeout(() => setSplash(false), 1150); return () => clearTimeout(t); }, []);
   useEffect(() => { const r = document.documentElement; if (theme === 'system') r.removeAttribute('data-theme'); else r.setAttribute('data-theme', theme); lsSet('theme', theme); }, [theme]);
@@ -236,6 +272,51 @@ export default function App() {
   const [copied, setCopied] = useState(false);
   const copyLogs = async () => { try { const r = api.logs ? await api.logs() : null; await navigator.clipboard.writeText((r && r.text) || 'no logs'); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch (_) {} };
 
+  const checkUpdate = async () => {
+    setUpd((u) => ({ ...u, phase: 'checking', error: null }));
+    const info = await api.checkUpdate();
+    setUpd((u) => ({ ...u, info, dismissed: false, phase: info && info.ok ? 'idle' : 'error', error: info && !info.ok ? info.error : null }));
+    return info;
+  };
+  // Quick check from the ⋮ menu: result shows as a short toast (or the update banner).
+  const [toast, setToast] = useState(null);
+  const toastTimer = useRef(null);
+  const showToast = (msg, ms = 3200) => { setToast(msg); clearTimeout(toastTimer.current); toastTimer.current = setTimeout(() => setToast(null), ms); };
+  const menuUpdate = async () => {
+    setMenuOpen(false);
+    if (upd.info && upd.info.ok && upd.info.newer) {
+      setUpd((u) => ({ ...u, dismissed: false }));
+      if (upd.phase === 'ready') installUpdate();
+      else if (upd.phase !== 'downloading' && upd.phase !== 'installing' && !(upd.info && upd.info.blocked)) startUpdate();
+      return;
+    }
+    showToast('Checking for updates…', 20000);
+    const info = await checkUpdate();
+    if (!info || !info.ok) showToast('Couldn’t check for updates' + (info && info.error ? ': ' + info.error : '.'), 5000);
+    else if (info.newer) showToast(`Version ${info.latest} is available.`);
+    else showToast(`You’re up to date (v${info.current || appVersion}).`);
+  };
+  const startUpdate = async () => {
+    setUpd((u) => ({ ...u, phase: 'downloading', progress: 0, error: null }));
+    const r = await api.downloadUpdate();
+    if (!r || !r.ok) { setUpd((u) => ({ ...u, phase: 'error', error: (r && r.error) || 'Download failed.' })); return; }
+    setUpd((u) => ({ ...u, phase: 'ready', progress: 1 }));
+  };
+  const installUpdate = async () => {
+    setUpd((u) => ({ ...u, phase: 'installing', error: null }));
+    const r = await api.installUpdate();
+    if (!r || !r.ok) setUpd((u) => ({ ...u, phase: 'error', error: (r && r.error) || 'Could not install.' }));
+    else if (r.mode === 'opened') setUpd((u) => ({ ...u, phase: 'opened' }));
+  };
+  const updAvailable = !!(upd.info && upd.info.ok && upd.info.newer);
+  const UpdateAction = () => {
+    if (upd.phase === 'downloading') return <div className="upd-prog"><div className="upd-bar"><span style={{ width: Math.round(upd.progress * 100) + '%' }} /></div><span>{Math.round(upd.progress * 100)}%</span></div>;
+    if (upd.phase === 'ready') return <button className="btn primary small" onClick={installUpdate}>Restart &amp; install</button>;
+    if (upd.phase === 'installing') return <span className="upd-note">Installing… the app will reopen.</span>;
+    if (upd.phase === 'opened') return <span className="upd-note">Installer opened. Finish it there.</span>;
+    if (upd.info && upd.info.blocked) return <span className="upd-note">{upd.info.blocked}</span>;
+    return <button className="btn primary small" onClick={startUpdate}>Update now</button>;
+  };
   const finishOnboarding = () => { setOnboard(false); setStep(0); if (api && api.setSettings) api.setSettings({ onboardingSeenVersion: appVersion || '0.1.0' }); };
 
   const rows = instances.filter((i) => i.mode === tab && !i.archived);
@@ -289,6 +370,13 @@ export default function App() {
         <div className="seg">{[['auto', 'Auto'], ['light', 'Light'], ['dark', 'Dark']].map(([k, l]) => <button key={k} className={trayGlyph === k ? 'on' : ''} onClick={() => { setTrayGlyph(k); if (api && api.setSettings) api.setSettings({ trayGlyph: k }); }}>{l}</button>)}</div></div>
     </section>
   );
+  const Updates = (
+    <section className="sect">
+      <h3>Updates</h3>
+      <div className="set-row"><div><div className="lbl">Check for updates automatically</div><div className="hint">Asks GitHub Releases for a newer version. Nothing else is sent.</div></div>
+        <button className={'toggle' + (autoUpd ? ' on' : '')} onClick={() => { const v = !autoUpd; setAutoUpd(v); if (api && api.setSettings) api.setSettings({ autoUpdateCheck: v }); }} aria-label="Check for updates automatically"><span className="knob" /></button></div>
+    </section>
+  );
   const Sessions = (
     <section className="sect">
       <h3>Session bridging</h3>
@@ -318,11 +406,147 @@ export default function App() {
       <div className="about-hero"><img className="about-icon" src={octoHero} alt="Claude Profiles" />
         <div><div className="about-name">Claude Profiles</div><div className="about-ver">Version {appVersion || '0.1.0'} · MIT licensed</div></div></div>
       <p className="about-p">Run several separate <b>Claude Desktop logins</b> side by side on one machine, like browser profiles, but for Claude. Keep work and personal signed in at once, each with its own history and, if you like, its own name and icon.</p>
-      <p className="about-p">It works on your <b>already-installed</b> Claude. It never bundles Anthropic’s app, makes no network calls of its own, and never touches your conversations.</p>
+      <p className="about-p">It works on your <b>already-installed</b> Claude. It never bundles Anthropic’s app, never touches your conversations, and its only network call is checking GitHub for a newer version of itself.</p>
+      <div className="upd-box">
+        <div className="upd-txt">
+          {upd.phase === 'checking' ? 'Checking for updates…'
+            : upd.phase === 'error' ? <span className="upd-err">{upd.error}</span>
+              : updAvailable ? <>Version <b>{upd.info.latest}</b> is available.</>
+                : upd.info && upd.info.ok ? 'You’re on the latest version.' : 'Update without re-downloading from GitHub.'}
+        </div>
+        {updAvailable && upd.phase !== 'checking' ? <UpdateAction /> : <button className="btn ghost small" disabled={upd.phase === 'checking'} onClick={checkUpdate}>Check for updates</button>}
+        {updAvailable && upd.phase === 'error' && <button className="btn ghost small" onClick={checkUpdate}>Retry</button>}
+      </div>
       <div className="about-tags"><span className="chiptag">Open source</span><span className="chiptag">macOS · Windows · Linux</span><span className="chiptag">No telemetry</span></div>
       <div className="about-links"><button className="btn primary" onClick={() => ext(REPO)}>View on GitHub</button><button className="btn ghost" onClick={() => ext(LINKEDIN)}>Built by Shahrukh Khan</button><button className="btn ghost" onClick={copyLogs}>{copied ? 'Copied ✓' : 'Copy diagnostics'}</button></div>
     </section>
   );
+
+  const BridgeModal = bridgeFor && (
+        <div className="overlay" onClick={closeBridge}>
+          <div className="modal bwide" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-h"><h3>Import sessions into “{bridgeFor.name}”</h3>
+              <p>Pick which of this machine’s local Claude Code sessions to show in this profile. It only adds sidebar entries and backs up first, and never changes your conversations. The profile must be fully quit.</p></div>
+            <div className="bridge-body">
+              {bridgeBusy && !bridgeList && (
+                <div className="sesslist">
+                  {[0, 1, 2, 3, 4].map((i) => (
+                    <div className="sess skel" key={i}>
+                      <span className="sk-box" />
+                      <span className="sess-main"><span className="sk-line w1" /><span className="sk-line w2" /></span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {bridgeList && !bridgeList.ok && <div className="bridge-msg err">{bridgeList.error}</div>}
+              {bridgeList && bridgeList.ok && bridgeList.running && <div className="bridge-msg err">Quit “{bridgeFor.name}” first, then reopen this.</div>}
+              {bridgeList && bridgeList.ok && !bridgeList.running && (() => {
+                const all = bridgeList.sessions;
+                const q = bridgeQuery.trim().toLowerCase();
+                const allLabels = {};
+                { const byP = {}; for (const x of all) (byP[x.project] = byP[x.project] || []).push(x); for (const k of Object.keys(byP)) allLabels[k] = projLabel(byP[k], k); }
+                const matches = (x) => !q || (x.title || '').toLowerCase().includes(q) || (allLabels[x.project] || '').toLowerCase().includes(q) || (x.firstMessage || '').toLowerCase().includes(q);
+                const visible = (x) => !hiddenProjects.has(x.project) && matches(x);
+                const cmp = {
+                  recent: (a, b) => (b.lastActivityAt || 0) - (a.lastActivityAt || 0),
+                  oldest: (a, b) => (a.lastActivityAt || 0) - (b.lastActivityAt || 0),
+                  name: (a, b) => (a.title || '').localeCompare(b.title || '', undefined, { sensitivity: 'base' }),
+                  project: (a, b) => (b.lastActivityAt || 0) - (a.lastActivityAt || 0),
+                }[bridgeSort] || ((a, b) => (b.lastActivityAt || 0) - (a.lastActivityAt || 0));
+                const inTab = all.filter((x) => x.status === bridgeTab && visible(x)).sort(cmp);
+                const groups = {};
+                for (const x of inTab) (groups[x.project] = groups[x.project] || []).push(x);
+                // Group order follows the sort: newest/oldest activity first, or A–Z by name.
+                const groupKeys = Object.keys(groups).sort((a, b) => {
+                  if (bridgeSort === 'name' || bridgeSort === 'project') return allLabels[a].localeCompare(allLabels[b], undefined, { sensitivity: 'base' });
+                  return cmp(groups[a][0], groups[b][0]);
+                });
+                const hiddenHere = [...hiddenProjects].filter((p) => allLabels[p]);
+                const tabCount = (st) => all.filter((x) => x.status === st && visible(x)).length;
+                const nNew = tabCount('new'), nUpd = tabCount('stale'), nCur = tabCount('current');
+                const emptyMsg = q ? `No sessions match “${bridgeQuery.trim()}”.` : bridgeTab === 'new' ? 'No new sessions to import.' : bridgeTab === 'stale' ? 'No updates. Everything imported here is up to date.' : 'Nothing imported into this profile yet.';
+                return (
+                  <>
+                    {bridgeResult && <div className="bridge-msg ok"><b>{bridgeResult.written || 0}</b> imported{bridgeResult.refreshed ? ', ' + bridgeResult.refreshed + ' updated' : ''}. Fully quit and reopen “{bridgeFor.name}” to see the changes.</div>}
+                    <div className="sess-legend">Conversations are a single shared file, so their content stays current across profiles. This only sets what “{bridgeFor.name}” shows in its sidebar.</div>
+                    <div className="bridge-tabs">
+                      {[['new', 'New', nNew], ['stale', 'Updates', nUpd], ['current', 'Up to date', nCur]].map(([k, l, c]) => (
+                        <button key={k} type="button" className={'btab' + (bridgeTab === k ? ' on' : '')} onClick={() => setBridgeTab(k)}>{l} <span className="btab-n">{c}</span></button>
+                      ))}
+                    </div>
+                    <div className="sess-filter">
+                      <input className="sess-search" type="search" placeholder="Search sessions or projects…" value={bridgeQuery} onChange={(e) => setBridgeQuery(e.target.value)} />
+                      <select className="sess-sort" value={bridgeSort} onChange={(e) => changeSort(e.target.value)} aria-label="Sort sessions">
+                        {SESS_SORTS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+                      </select>
+                    </div>
+                    {hiddenHere.length > 0 && (
+                      <div className="hidden-proj">
+                        <span className="hp-lbl">Hidden:</span>
+                        {hiddenHere.map((p) => <button key={p} type="button" className="hp-chip" title={'Show ' + allLabels[p] + ' again'} onClick={() => showProject(p)}>{allLabels[p]} <span aria-hidden="true">+</span></button>)}
+                        <button type="button" className="linklike" onClick={() => saveHidden(new Set())}>Show all</button>
+                      </div>
+                    )}
+                    {bridgeTab !== 'current' && (
+                      <div className="bridge-tools">
+                        <button className="linklike" onClick={() => setBridgeSel((prev) => { const n = new Set(prev); inTab.forEach((x) => n.add(x.cliSessionId)); return n; })}>Select all in view</button>
+                        <button className="linklike" onClick={() => setBridgeSel(new Set())}>Clear selection</button>
+                        <span className="bridge-count">{bridgeSel.size} selected</span>
+                      </div>
+                    )}
+                    {inTab.length === 0
+                      ? (
+                        <div className="sess-empty">
+                          <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7l2-3h14l2 3" /><path d="M3 7v11a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7" /><path d="M8 12h8" /></svg>
+                          <div>{emptyMsg}</div>
+                        </div>
+                      )
+                      : (
+                        <div className="sesslist">
+                          {groupKeys.map((proj) => {
+                            const list = groups[proj];
+                            const actionable = list.filter((x) => x.status !== 'current').map((x) => x.cliSessionId);
+                            const allSel = actionable.length > 0 && actionable.every((id) => bridgeSel.has(id));
+                            const collapsed = bridgeCollapsed.has(proj);
+                            return (
+                              <div className="sessgroup" key={proj}>
+                                <div className="sessgroup-h">
+                                  <input type="checkbox" disabled={actionable.length === 0} checked={allSel} onChange={() => toggleGroup(actionable)} />
+                                  <button type="button" className="sessgroup-name" onClick={() => toggleCollapse(proj)} title={(list.find((x) => x.cwd) || {}).cwd || proj}>
+                                    <span className="caret">{collapsed ? '▸' : '▾'}</span><span className="sessgroup-label">{allLabels[proj]}</span>
+                                  </button>
+                                  <span className="sessgroup-count">{list.length}</span>
+                                  <button type="button" className="sessgroup-x" title={'Hide ' + allLabels[proj] + ' from this list'} aria-label={'Hide ' + allLabels[proj]} onClick={() => hideProject(proj, list.map((x) => x.cliSessionId))}>✕</button>
+                                </div>
+                                {!collapsed && list.map((x) => (
+                                  <label key={x.cliSessionId} className={'sess nested' + (x.status === 'current' ? ' done' : '')}>
+                                    <input type="checkbox" disabled={x.status === 'current'} checked={bridgeSel.has(x.cliSessionId)} onChange={() => toggleSel(x.cliSessionId)} />
+                                    <span className="sess-main"><span className="sess-title" title={x.title}>{x.title}</span><span className="sess-meta">{x.lastActivityAt ? new Date(x.lastActivityAt).toLocaleDateString() : ''}</span></span>
+                                  </label>
+                                ))}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                  </>
+                );
+              })()}
+            </div>
+            <div className="modal-f">
+              <button className="btn ghost" onClick={closeBridge}>{bridgeResult ? 'Close' : 'Cancel'}</button>
+              {bridgeList && bridgeList.ok && !bridgeList.running && (() => {
+                const st = Object.fromEntries(bridgeList.sessions.map((x) => [x.cliSessionId, x.status]));
+                const selNew = [...bridgeSel].filter((id) => st[id] === 'new').length;
+                const selUpd = [...bridgeSel].filter((id) => st[id] === 'stale').length;
+                const n = selNew + selUpd;
+                const label = selUpd === 0 ? `Import ${n}` : selNew === 0 ? `Update ${n}` : `Sync ${n}`;
+                return <button className="btn primary" disabled={bridgeBusy || n === 0} onClick={applyBridge}>{bridgeBusy ? 'Working…' : label}</button>;
+              })()}
+            </div>
+          </div>
+        </div>
+      );
 
   if (screen === 'settings' || screen === 'about' || screen === 'archive') {
     return (
@@ -333,7 +557,8 @@ export default function App() {
           <button className="icon-btn back" onClick={() => setScreen('home')} title="Back">‹</button>
           <div className="pagetitle">{screen === 'settings' ? 'Settings' : screen === 'archive' ? 'Archived' : 'About'}</div><div className="spacer" />
         </header>
-        <main className="page wide">{screen === 'settings' ? <>{Appearance}{Sessions}</> : screen === 'archive' ? Archived : About}</main>
+        <main className="page wide">{screen === 'settings' ? <>{Appearance}{Updates}{Sessions}</> : screen === 'archive' ? Archived : About}</main>
+        {BridgeModal}
         <footer className="statusbar"><span className="cd" />{env ? <>Claude {env.version || '—'} · {env.claudeApp ? 'detected' : 'not found'}</> : '—'}<button className="credit" onClick={() => ext(LINKEDIN)} title="Shahrukh Khan on LinkedIn">Built by <b>Shahrukh Khan</b></button></footer>
       </div>
     );
@@ -352,13 +577,19 @@ export default function App() {
           {menuOpen && (<>
             <div className="menu-scrim" onClick={() => setMenuOpen(false)} />
             <div className="menu">
+              <button className="menu-upd" onClick={menuUpdate} disabled={upd.phase === 'checking'}>
+                {updAvailable
+                  ? <><span className="upd-dot" />{upd.phase === 'ready' ? 'Restart & install' : upd.phase === 'downloading' ? `Downloading… ${Math.round(upd.progress * 100)}%` : `Update to v${upd.info.latest}`}</>
+                  : upd.phase === 'checking' ? 'Checking…' : 'Check for updates'}
+              </button>
+              <div className="menu-sep" />
               <button onClick={() => { setScreen('archive'); setMenuOpen(false); }}>Archived</button>
               <button onClick={() => { setScreen('settings'); setMenuOpen(false); }}>Settings</button>
               <button onClick={() => { setScreen('about'); setMenuOpen(false); }}>About</button>
             </div>
           </>)}
         </div>
-        <div className="brand"><img className="octo-mark" src={octoMark} alt="" /><span>Claude Profiles</span></div>
+        <div className="brand"><img className="octo-mark" src={octoMark} alt="" /><span>Claude Profiles</span>{appVersion && <button type="button" className="brand-ver" title="About Claude Profiles" onClick={() => setScreen('about')}>v{appVersion}</button>}</div>
       </header>
 
       {adding && (
@@ -404,6 +635,14 @@ export default function App() {
         </div>
       )}
 
+      {updAvailable && !upd.dismissed && (
+        <div className="upd-banner">
+          <span className="upd-dot" />
+          <div className="upd-txt">Claude Profiles <b>{upd.info.latest}</b> is available{upd.phase === 'error' ? <span className="upd-err"> · {upd.error}</span> : null}</div>
+          <UpdateAction />
+          {upd.phase !== 'downloading' && upd.phase !== 'installing' && <button className="x" title="Later" onClick={() => setUpd((u) => ({ ...u, dismissed: true }))}>✕</button>}
+        </div>
+      )}
       <main className="list">
         {rows.length === 0 && <div className="empty"><p>No {tab === 'simple' ? 'quick-launch' : 'custom'} profiles yet.</p><button className="btn primary" onClick={openAdd}>+ Add your first</button></div>}
         {rows.map((it) => (
@@ -479,101 +718,8 @@ export default function App() {
           </>
         );
       })()}
-      {bridgeFor && (
-        <div className="overlay" onClick={closeBridge}>
-          <div className="modal bwide" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-h"><h3>Import sessions into “{bridgeFor.name}”</h3>
-              <p>Pick which of this machine’s local Claude Code sessions to show in this profile. It only adds sidebar entries and backs up first, and never changes your conversations. The profile must be fully quit.</p></div>
-            <div className="bridge-body">
-              {bridgeBusy && !bridgeList && (
-                <div className="sesslist">
-                  {[0, 1, 2, 3, 4].map((i) => (
-                    <div className="sess skel" key={i}>
-                      <span className="sk-box" />
-                      <span className="sess-main"><span className="sk-line w1" /><span className="sk-line w2" /></span>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {bridgeList && !bridgeList.ok && <div className="bridge-msg err">{bridgeList.error}</div>}
-              {bridgeList && bridgeList.ok && bridgeList.running && <div className="bridge-msg err">Quit “{bridgeFor.name}” first, then reopen this.</div>}
-              {bridgeList && bridgeList.ok && !bridgeList.running && (() => {
-                const all = bridgeList.sessions;
-                const nNew = all.filter((x) => x.status === 'new').length;
-                const nUpd = all.filter((x) => x.status === 'stale').length;
-                const nCur = all.filter((x) => x.status === 'current').length;
-                const inTab = all.filter((x) => x.status === bridgeTab);
-                const groups = {};
-                for (const x of inTab) (groups[x.project] = groups[x.project] || []).push(x);
-                const emptyMsg = bridgeTab === 'new' ? 'No new sessions to import.' : bridgeTab === 'stale' ? 'No updates. Everything imported here is up to date.' : 'Nothing imported into this profile yet.';
-                return (
-                  <>
-                    {bridgeResult && <div className="bridge-msg ok"><b>{bridgeResult.written || 0}</b> imported{bridgeResult.refreshed ? ', ' + bridgeResult.refreshed + ' updated' : ''}. Fully quit and reopen “{bridgeFor.name}” to see the changes.</div>}
-                    <div className="sess-legend">Conversations are a single shared file, so their content stays current across profiles. This only sets what “{bridgeFor.name}” shows in its sidebar.</div>
-                    <div className="bridge-tabs">
-                      {[['new', 'New', nNew], ['stale', 'Updates', nUpd], ['current', 'Up to date', nCur]].map(([k, l, c]) => (
-                        <button key={k} type="button" className={'btab' + (bridgeTab === k ? ' on' : '')} onClick={() => setBridgeTab(k)}>{l} <span className="btab-n">{c}</span></button>
-                      ))}
-                    </div>
-                    {bridgeTab !== 'current' && (
-                      <div className="bridge-tools">
-                        <button className="linklike" onClick={() => setBridgeSel((prev) => { const n = new Set(prev); inTab.forEach((x) => n.add(x.cliSessionId)); return n; })}>Select all in view</button>
-                        <button className="linklike" onClick={() => setBridgeSel(new Set())}>Clear selection</button>
-                        <span className="bridge-count">{bridgeSel.size} selected</span>
-                      </div>
-                    )}
-                    {inTab.length === 0
-                      ? (
-                        <div className="sess-empty">
-                          <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7l2-3h14l2 3" /><path d="M3 7v11a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7" /><path d="M8 12h8" /></svg>
-                          <div>{emptyMsg}</div>
-                        </div>
-                      )
-                      : (
-                        <div className="sesslist">
-                          {Object.keys(groups).sort().map((proj) => {
-                            const list = groups[proj];
-                            const actionable = list.filter((x) => x.status !== 'current').map((x) => x.cliSessionId);
-                            const allSel = actionable.length > 0 && actionable.every((id) => bridgeSel.has(id));
-                            const collapsed = bridgeCollapsed.has(proj);
-                            return (
-                              <div className="sessgroup" key={proj}>
-                                <div className="sessgroup-h">
-                                  <input type="checkbox" disabled={actionable.length === 0} checked={allSel} onChange={() => toggleGroup(actionable)} />
-                                  <button type="button" className="sessgroup-name" onClick={() => toggleCollapse(proj)} title={proj}>
-                                    <span className="caret">{collapsed ? '▸' : '▾'}</span><span className="sessgroup-label">{proj}</span>
-                                  </button>
-                                  <span className="sessgroup-count">{list.length}</span>
-                                </div>
-                                {!collapsed && list.map((x) => (
-                                  <label key={x.cliSessionId} className={'sess nested' + (x.status === 'current' ? ' done' : '')}>
-                                    <input type="checkbox" disabled={x.status === 'current'} checked={bridgeSel.has(x.cliSessionId)} onChange={() => toggleSel(x.cliSessionId)} />
-                                    <span className="sess-main"><span className="sess-title" title={x.title}>{x.title}</span><span className="sess-meta">{x.lastActivityAt ? new Date(x.lastActivityAt).toLocaleDateString() : ''}</span></span>
-                                  </label>
-                                ))}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                  </>
-                );
-              })()}
-            </div>
-            <div className="modal-f">
-              <button className="btn ghost" onClick={closeBridge}>{bridgeResult ? 'Close' : 'Cancel'}</button>
-              {bridgeList && bridgeList.ok && !bridgeList.running && (() => {
-                const st = Object.fromEntries(bridgeList.sessions.map((x) => [x.cliSessionId, x.status]));
-                const selNew = [...bridgeSel].filter((id) => st[id] === 'new').length;
-                const selUpd = [...bridgeSel].filter((id) => st[id] === 'stale').length;
-                const n = selNew + selUpd;
-                const label = selUpd === 0 ? `Import ${n}` : selNew === 0 ? `Update ${n}` : `Sync ${n}`;
-                return <button className="btn primary" disabled={bridgeBusy || n === 0} onClick={applyBridge}>{bridgeBusy ? 'Working…' : label}</button>;
-              })()}
-            </div>
-          </div>
-        </div>
-      )}
+      {BridgeModal}
+      {toast && <div className="toast" role="status">{toast}</div>}
       {cropSrc && <Cropper src={cropSrc} onCancel={() => setCropSrc(null)} onDone={(d) => { setIconData(d); setCropSrc(null); }} />}
       {confirmPurge && (
         <div className="overlay" onClick={() => setConfirmPurge(null)}>

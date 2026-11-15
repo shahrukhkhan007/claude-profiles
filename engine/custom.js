@@ -75,6 +75,53 @@ function macApplyIcon(bundlePath, iconPath) {
   return built;
 }
 
+// Bump when clone signing changes so existing clones are flagged for a rebuild.
+// v2: carry over Claude's own device entitlements (microphone, camera, …) —
+// v1 clones were signed with JIT keys only, so hardened runtime blocked the
+// microphone and voice dictation silently did nothing.
+const SIGN_VERSION = 2;
+
+// Entitlements an ad-hoc signature can't carry: they're tied to Anthropic's team
+// ID / provisioning, and AMFI kills an ad-hoc binary that claims them.
+const RESTRICTED_ENT = /^(com\.apple\.application-identifier|com\.apple\.developer\.|keychain-access-groups|com\.apple\.security\.application-groups|application-identifier)/;
+// Always needed by an Electron clone, whatever the original declares.
+const REQUIRED_ENT = [
+  'com.apple.security.cs.allow-jit',
+  'com.apple.security.cs.allow-unsigned-executable-memory',
+  'com.apple.security.cs.disable-library-validation',
+  'com.apple.security.cs.allow-dyld-environment-variables',
+];
+// Fallback device access if the original's entitlements can't be read.
+const DEVICE_ENT = [
+  'com.apple.security.device.audio-input',
+  'com.apple.security.device.camera',
+  'com.apple.security.automation.apple-events',
+];
+
+// Original entitlements (as an object) → the boolean keys safe to re-sign with.
+function cloneEntitlementKeys(original) {
+  const keys = new Set(REQUIRED_ENT);
+  const src = original && typeof original === 'object' ? original : null;
+  if (!src) DEVICE_ENT.forEach((k) => keys.add(k));
+  else for (const [k, v] of Object.entries(src)) if (v === true && !RESTRICTED_ENT.test(k)) keys.add(k);
+  return [...keys].sort();
+}
+
+function readEntitlements(appPath) {
+  const tmp = path.join(os.tmpdir(), `cp-orig-ent-${Date.now()}.plist`);
+  try {
+    let xml = '';
+    try { xml = execFileSync('codesign', ['-d', '--entitlements', '-', '--xml', appPath], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }); } catch (_) {}
+    if (!/<plist/.test(xml)) xml = execFileSync('codesign', ['-d', '--entitlements', ':-', appPath], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    const start = xml.indexOf('<?xml') >= 0 ? xml.indexOf('<?xml') : xml.indexOf('<plist');
+    fs.writeFileSync(tmp, xml.slice(Math.max(0, start)));
+    return JSON.parse(execFileSync('plutil', ['-convert', 'json', '-o', '-', tmp], { encoding: 'utf8' }));
+  } catch (e) {
+    log('readEntitlements failed, using defaults:', String((e && e.message) || e).slice(0, 200));
+    return null;
+  } finally { try { fs.unlinkSync(tmp); } catch (_) {} }
+}
+
 // Ad-hoc re-sign a modified Electron clone. A plain `codesign --sign -` strips
 // the hardened-runtime entitlements the original app carried, including the JIT
 // ones V8/Electron require — without them the clone traps at launch. So we sign
@@ -82,14 +129,14 @@ function macApplyIcon(bundlePath, iconPath) {
 // validation (nested code is now ad-hoc, no team to validate against).
 function macSign(bundlePath) {
   const ent = path.join(os.tmpdir(), `cp-ent-${Date.now()}.plist`);
+  // Keep Claude's own device entitlements (microphone for dictation, camera, …).
+  const keys = cloneEntitlementKeys(readEntitlements(platform.claudeAppPath() || bundlePath));
+  log('clone entitlements:', keys.join(', '));
   fs.writeFileSync(ent, [
     '<?xml version="1.0" encoding="UTF-8"?>',
     '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">',
     '<plist version="1.0"><dict>',
-    '  <key>com.apple.security.cs.allow-jit</key><true/>',
-    '  <key>com.apple.security.cs.allow-unsigned-executable-memory</key><true/>',
-    '  <key>com.apple.security.cs.disable-library-validation</key><true/>',
-    '  <key>com.apple.security.cs.allow-dyld-environment-variables</key><true/>',
+    ...keys.map((k) => `  <key>${k}</key><true/>`),
     '</dict></plist>',
     '',
   ].join('\n'));
@@ -134,7 +181,7 @@ function macCreate(inst) {
   runLogged('/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister', ['-f', bundlePath]);
 
   log('macCreate done:', bundlePath, 'verified=', sign && sign.verified);
-  const out = { bundlePath, bundleId, claudeVersionAtBuild: platform.claudeVersion() };
+  const out = { bundlePath, bundleId, claudeVersionAtBuild: platform.claudeVersion(), signVersion: SIGN_VERSION };
   if (sign && sign.verified === false) out.buildError = 'Signature verify failed: ' + (sign.verifyError || 'unknown');
   return out;
 }
@@ -210,6 +257,7 @@ function macApplyIconOnly(inst) {
   if (!inst.bundlePath || !fs.existsSync(inst.bundlePath) || !inst.iconPath) return { ok: false };
   macApplyIcon(inst.bundlePath, inst.iconPath);
   macSign(inst.bundlePath);
+  try { require('./instances').update(inst.id, { signVersion: SIGN_VERSION }); } catch (_) {}
   try {
     run('/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister', ['-f', inst.bundlePath]);
   } catch (_) {}
@@ -244,4 +292,4 @@ function rebuild(inst) {
   return { ...macCreate(inst), rebuilt: true };
 }
 
-module.exports = { create, remove, rebuild, applyIcon, slug };
+module.exports = { create, remove, rebuild, applyIcon, slug, cloneEntitlementKeys, SIGN_VERSION };

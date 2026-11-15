@@ -12,6 +12,9 @@ const FILE = path.join(CONFIG_DIR, 'settings.json');
 
 const DEFAULTS = {
   trayGlyph: 'auto', // 'auto' (template, adapts) | 'light' (white) | 'dark' (black)
+  autoUpdateCheck: true, // ask GitHub Releases for a newer version in the background
+  hiddenProjects: [], // project folders hidden in the session-import list
+  sessionSort: 'recent',
 };
 
 function read() {

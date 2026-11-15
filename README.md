@@ -62,6 +62,11 @@ Just download the installer for your OS.
 4. When you launch a **Custom** profile the first time, macOS may ask to use
    "Claude Safe Storage" from your keychain, click **Always Allow**. It's your
    own Claude data on your own machine.
+5. **Voice dictation:** the first time you dictate in a profile, macOS asks for
+   microphone / speech-recognition access, click **Allow**. Quick Launch profiles
+   ask on behalf of **Claude Profiles**; Custom profiles ask as themselves. If you
+   created a Custom profile with v0.2.0 or earlier, click its **Update** button
+   once so dictation works.
 
 ### Windows
 
@@ -76,6 +81,15 @@ Download the **`.AppImage`** or **`.deb`** from the
 
 - **AppImage** — make it executable (`chmod +x <file>`) and run it.
 - **.deb** — install it with `sudo dpkg -i <file>`.
+
+### Updating
+
+You don't need to re-download from GitHub. When a new version is out,
+Claude Profiles shows an **Update now** banner (or use **About → Check for
+updates**). It downloads the new version, then **Restart & install** swaps it in
+and reopens the app. On Linux `.deb` installs it opens the package installer instead.
+The only network call is that check against GitHub Releases, and you can turn it
+off in **Settings → Updates**. On macOS the app must be in **Applications** to update itself.
 
 > **No prebuilt release yet?** Until installers are published on the Releases
 > page, you can build your own in one command — see

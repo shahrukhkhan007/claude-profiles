@@ -21,6 +21,8 @@ user's conversations.
   - `detail.js` — live pid / uptime / memory, bring-to-front, stop, reveal.
   - `custom.js` — Custom mode: macOS app clone (rename + icon + re-sign); Windows/Linux shortcuts.
   - `index.js` — the public engine API called over IPC.
+  - `bridge.js` — session import: registers shared `~/.claude/projects` transcripts in a profile's sidebar.
+  - `updater.js` — self-update from GitHub Releases (unsigned-friendly; no electron-updater).
   - `log.js` — logger (writes to `~/.claude-profiles/logs/` and, in dev, `.cp-debug.log`).
 - `electron/` — `main.js` (window, tray, IPC handlers), `preload.js` (exposes `window.api`).
 - `src/` — React renderer: `App.jsx`, `styles.css`, `main.jsx`. **JSX, no TypeScript.**
@@ -51,7 +53,10 @@ user's conversations.
   crash at launch with a fatal `Unable to find helper app`. Use **`CFBundleDisplayName`**
   for the Dock label instead. Re-sign clones with an entitlements file that keeps
   `com.apple.security.cs.allow-jit`, `allow-unsigned-executable-memory`, and
-  `disable-library-validation`, or the clone traps in V8 at startup.
+  `disable-library-validation`, or the clone traps in V8 at startup — **and** that
+  carries over Claude's own `com.apple.security.device.*` keys (`audio-input` etc.),
+  or hardened runtime blocks the mic and voice dictation silently fails. Bump
+  `SIGN_VERSION` in `custom.js` whenever signing changes so old clones show "Update".
 - **Distribution is unsigned** (`build.mac.identity: null`). Don't add signing that
   requires a paid Apple/Windows certificate unless the maintainer asks.
 - The renderer runs in Electron — don't rely on browser storage for durable state;
@@ -68,6 +73,13 @@ user's conversations.
   any dependency change and commit the updated lockfile.
 - **Update `tests-e2e/app.spec.mjs` when you change add/edit UI or element classes.**
   It selects by `.add-modal`, placeholder text, `.card`, `.sheet2`, etc.
+- **Imported session names** come from the transcript's LAST `{"type":"custom-title"}`
+  line (what Claude's sidebar shows), not the first user message.
+- **Quick Launch spawns Claude's binary directly**, so macOS TCC treats Claude Profiles
+  as the "responsible" app for mic/speech. That's why `build.mac.extendInfo` carries
+  `NSMicrophoneUsageDescription` etc. Don't remove them, or dictation breaks.
+- **Self-update can't use electron-updater/Squirrel** (unsigned builds). `updater.js`
+  installs from a detached helper after the app quits; the renderer never passes a path.
 - Cloned apps prompt once for macOS Keychain access ("Claude Safe Storage") — expected.
 - Don't commit build output: `release/`, `dist/`, `node_modules/`, `.cp-debug.log`.
 

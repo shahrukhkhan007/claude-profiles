@@ -3,6 +3,7 @@ const { app, BrowserWindow, ipcMain, dialog, Tray, Menu, nativeImage, shell } = 
 const path = require('path');
 const engine = require('../engine');
 const cplog = require('../engine/log');
+const updater = require('../engine/updater');
 
 const DEV_URL = 'http://127.0.0.1:5173';
 // Runtime assets: from build/ in dev, from Resources/assets in the packaged app (see build.extraResources).
@@ -20,6 +21,55 @@ const GLYPHS = {
 
 let win = null;
 let tray = null;
+// Self-update state lives in main: the renderer only asks to check/download/install,
+// and install always uses the file *we* downloaded (never a path from the renderer).
+const upd = { info: null, file: null, downloading: false, progress: 0 };
+const sendToWin = (ch, payload) => { try { if (win && !win.isDestroyed()) win.webContents.send(ch, payload); } catch (_) {} };
+
+async function checkForUpdates() {
+  const info = await updater.checkLatest(app.getVersion());
+  if (info.ok) info.blocked = updater.blockedReason();
+  upd.info = info;
+  if (info.ok && info.newer) { sendToWin('update:available', info); refreshTray(); }
+  return info;
+}
+
+async function downloadUpdate() {
+  if (!upd.info || !upd.info.ok || !upd.info.newer) await checkForUpdates();
+  const info = upd.info;
+  if (!info || !info.ok) return { ok: false, error: (info && info.error) || 'Could not reach GitHub.' };
+  if (!info.newer) return { ok: false, error: 'You already have the latest version.' };
+  if (!info.asset) return { ok: false, error: 'No installer for this system in the latest release.' };
+  if (upd.downloading) return { ok: false, error: 'Already downloading.' };
+  upd.downloading = true; upd.progress = 0;
+  try {
+    const dir = path.join(app.getPath('temp'), 'claude-profiles-update', info.latest);
+    let last = 0;
+    upd.file = await updater.download(info.asset, dir, (p) => {
+      upd.progress = p;
+      if (p - last >= 0.01 || p === 1) { last = p; sendToWin('update:progress', p); }
+    });
+    cplog.log('update downloaded', info.latest, upd.file);
+    return { ok: true, file: path.basename(upd.file), version: info.latest };
+  } catch (e) {
+    cplog.log('update download failed', String(e && e.message));
+    return { ok: false, error: String((e && e.message) || e) };
+  } finally { upd.downloading = false; }
+}
+
+function installUpdate() {
+  if (!upd.file) return { ok: false, error: 'Download the update first.' };
+  const blocked = updater.blockedReason();
+  if (blocked) return { ok: false, error: blocked };
+  try {
+    const r = updater.install(upd.file, { openPath: (f) => shell.openPath(f), logDir: path.dirname(cplog.LOG_FILE) });
+    cplog.log('update install started', r.mode);
+    if (r.mode === 'relaunch') setTimeout(() => app.quit(), 300);
+    return { ok: true, ...r };
+  } catch (e) {
+    return { ok: false, error: String((e && e.message) || e) };
+  }
+}
 
 function createWindow() {
   if (win && !win.isDestroyed()) { win.show(); win.focus(); return; }
@@ -69,9 +119,13 @@ async function buildTrayMenu() {
     label: list.length ? `${title} (${list.length})` : title,
     submenu: submenu(list),
   });
+  const updItem = upd.info && upd.info.ok && upd.info.newer
+    ? [{ label: `Update to v${upd.info.latest}…`, click: () => showManager('about') }, { type: 'separator' }]
+    : [];
   return Menu.buildFromTemplate([
     { label: `Claude Profiles · ${running} running`, enabled: false },
     { type: 'separator' },
+    ...updItem,
     groupItem('Quick Launch', simple),
     groupItem('Custom', customs),
     { type: 'separator' },
@@ -158,6 +212,10 @@ function registerIpc() {
     if (patch && Object.prototype.hasOwnProperty.call(patch, 'trayGlyph')) applyTrayGlyph();
     return r;
   });
+  ipcMain.handle('update:check', () => checkForUpdates());
+  ipcMain.handle('update:state', () => ({ info: upd.info, downloaded: !!upd.file, downloading: upd.downloading, progress: upd.progress }));
+  ipcMain.handle('update:download', () => downloadUpdate());
+  ipcMain.handle('update:install', () => installUpdate());
   ipcMain.handle('app:showManager', (_e, screen) => { showManager(screen); return { ok: true }; });
   ipcMain.handle('app:setGlass', (_e, on) => {
     if (win && !win.isDestroyed()) { try { win.setVibrancy(on ? 'under-window' : null); } catch (_) {} }
@@ -171,6 +229,14 @@ app.whenReady().then(() => {
   registerIpc();
   createWindow();
   createTray(); // menu bar presence in dev + prod
+  // Background update check (packaged builds only; can be turned off in Settings).
+  const autoCheck = () => {
+    let on = true;
+    try { on = (engine.getSettings() || {}).autoUpdateCheck !== false; } catch (_) {}
+    if (on && app.isPackaged && !process.env.CP_E2E) checkForUpdates().catch(() => {});
+  };
+  setTimeout(autoCheck, 8000);
+  setInterval(autoCheck, 6 * 60 * 60 * 1000).unref();
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
 
