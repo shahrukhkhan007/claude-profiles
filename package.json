@@ -1,9 +1,12 @@
 {
   "name": "claude-profiles",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "private": true,
-  "description": "Run several separate Claude Desktop logins side by side on one machine \u2014 one clean app, cross-platform (macOS, Windows, Linux).",
-  "author": "Shah Rukh Khan",
+  "description": "Run several separate Claude Desktop logins side by side on one machine. One clean app, cross-platform (macOS, Windows, Linux).",
+  "author": {
+    "name": "Shah Rukh Khan",
+    "email": "shahrukh17khan13@gmail.com"
+  },
   "license": "MIT",
   "main": "electron/main.js",
   "scripts": {
@@ -60,11 +63,20 @@
     },
     "mac": {
       "target": [
-        "dmg"
+        {
+          "target": "dmg",
+          "arch": "universal"
+        }
       ],
       "category": "public.app-category.utilities",
       "icon": "build/icon.png",
-      "identity": null
+      "identity": null,
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "Claude profiles you launch use your microphone for voice dictation.",
+        "NSSpeechRecognitionUsageDescription": "Claude profiles you launch use speech recognition for voice dictation.",
+        "NSAudioCaptureUsageDescription": "Claude profiles you launch use audio capture for voice dictation.",
+        "NSCameraUsageDescription": "Claude profiles you launch use your camera for content you allow."
+      }
     },
     "win": {
       "target": [
@@ -79,6 +91,24 @@
       ],
       "category": "Utility",
       "icon": "build/icon.png"
-    }
+    },
+    "extraResources": [
+      {
+        "from": "build",
+        "to": "assets",
+        "filter": [
+          "icon.png",
+          "trayTemplate.png",
+          "trayTemplate@2x.png",
+          "trayTemplate@3x.png",
+          "trayLight.png",
+          "trayLight@2x.png",
+          "trayLight@3x.png",
+          "trayDark.png",
+          "trayDark@2x.png",
+          "trayDark@3x.png"
+        ]
+      }
+    ]
   }
 }

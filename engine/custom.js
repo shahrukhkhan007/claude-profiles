@@ -1,4 +1,5 @@
 'use strict';
+const { uddNeedle } = require('./procmatch');
 // Custom profiles: give a profile its own name + icon in the Dock / taskbar.
 // macOS clones the Claude app; Windows/Linux use a shortcut / .desktop entry.
 const os = require('os');
@@ -48,7 +49,9 @@ function macBundlePath(name) {
 
 // Turn a PNG/JPG into an .icns and set it as the clone's icon.
 function macApplyIcon(bundlePath, iconPath) {
-  if (!iconPath || !fs.existsSync(iconPath)) return;
+  const exists = !!(iconPath && fs.existsSync(iconPath));
+  log('applyIcon: iconPath=' + iconPath + ' exists=' + exists);
+  if (!exists) { log('applyIcon: SKIP — no icon file on disk, keeping default Claude icon'); return false; }
   const work = fs.mkdtempSync(path.join(os.tmpdir(), 'cp-icon-'));
   const iconset = path.join(work, 'AppIcon.iconset');
   fs.mkdirSync(iconset, { recursive: true });
@@ -56,9 +59,67 @@ function macApplyIcon(bundlePath, iconPath) {
     run('sips', ['-z', String(s), String(s), iconPath, '--out', path.join(iconset, `icon_${s}x${s}.png`)]);
     run('sips', ['-z', String(s * 2), String(s * 2), iconPath, '--out', path.join(iconset, `icon_${s}x${s}@2x.png`)]);
   }
+  const plist = path.join(bundlePath, 'Contents', 'Info.plist');
   const icns = path.join(bundlePath, 'Contents', 'Resources', 'AppIcon.icns');
   run('iconutil', ['-c', 'icns', iconset, '-o', icns]);
-  run('/usr/libexec/PlistBuddy', ['-c', 'Set :CFBundleIconFile AppIcon', path.join(bundlePath, 'Contents', 'Info.plist')]);
+  // Set BOTH the icon file name and clear any alternate Electron default, so the
+  // bundle icon is unambiguously ours.
+  runLogged('/usr/libexec/PlistBuddy', ['-c', 'Set :CFBundleIconFile AppIcon', plist]);
+  runLogged('/usr/libexec/PlistBuddy', ['-c', 'Set :CFBundleIconName AppIcon', plist]);
+  // Bust the macOS icon cache: bump mtimes so Finder/Dock/LaunchServices re-read it.
+  try { run('touch', [icns]); } catch (_) {}
+  try { run('touch', [plist]); } catch (_) {}
+  try { run('touch', [bundlePath]); } catch (_) {}
+  const built = fs.existsSync(icns);
+  log('applyIcon: wrote ' + icns + ' built=' + built + ' bytes=' + (built ? fs.statSync(icns).size : 0));
+  return built;
+}
+
+// Bump when clone signing changes so existing clones are flagged for a rebuild.
+// v2: carry over Claude's own device entitlements (microphone, camera, …) —
+// v1 clones were signed with JIT keys only, so hardened runtime blocked the
+// microphone and voice dictation silently did nothing.
+const SIGN_VERSION = 2;
+
+// Entitlements an ad-hoc signature can't carry: they're tied to Anthropic's team
+// ID / provisioning, and AMFI kills an ad-hoc binary that claims them.
+const RESTRICTED_ENT = /^(com\.apple\.application-identifier|com\.apple\.developer\.|keychain-access-groups|com\.apple\.security\.application-groups|application-identifier)/;
+// Always needed by an Electron clone, whatever the original declares.
+const REQUIRED_ENT = [
+  'com.apple.security.cs.allow-jit',
+  'com.apple.security.cs.allow-unsigned-executable-memory',
+  'com.apple.security.cs.disable-library-validation',
+  'com.apple.security.cs.allow-dyld-environment-variables',
+];
+// Fallback device access if the original's entitlements can't be read.
+const DEVICE_ENT = [
+  'com.apple.security.device.audio-input',
+  'com.apple.security.device.camera',
+  'com.apple.security.automation.apple-events',
+];
+
+// Original entitlements (as an object) → the boolean keys safe to re-sign with.
+function cloneEntitlementKeys(original) {
+  const keys = new Set(REQUIRED_ENT);
+  const src = original && typeof original === 'object' ? original : null;
+  if (!src) DEVICE_ENT.forEach((k) => keys.add(k));
+  else for (const [k, v] of Object.entries(src)) if (v === true && !RESTRICTED_ENT.test(k)) keys.add(k);
+  return [...keys].sort();
+}
+
+function readEntitlements(appPath) {
+  const tmp = path.join(os.tmpdir(), `cp-orig-ent-${Date.now()}.plist`);
+  try {
+    let xml = '';
+    try { xml = execFileSync('codesign', ['-d', '--entitlements', '-', '--xml', appPath], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }); } catch (_) {}
+    if (!/<plist/.test(xml)) xml = execFileSync('codesign', ['-d', '--entitlements', ':-', appPath], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    const start = xml.indexOf('<?xml') >= 0 ? xml.indexOf('<?xml') : xml.indexOf('<plist');
+    fs.writeFileSync(tmp, xml.slice(Math.max(0, start)));
+    return JSON.parse(execFileSync('plutil', ['-convert', 'json', '-o', '-', tmp], { encoding: 'utf8' }));
+  } catch (e) {
+    log('readEntitlements failed, using defaults:', String((e && e.message) || e).slice(0, 200));
+    return null;
+  } finally { try { fs.unlinkSync(tmp); } catch (_) {} }
 }
 
 // Ad-hoc re-sign a modified Electron clone. A plain `codesign --sign -` strips
@@ -68,14 +129,14 @@ function macApplyIcon(bundlePath, iconPath) {
 // validation (nested code is now ad-hoc, no team to validate against).
 function macSign(bundlePath) {
   const ent = path.join(os.tmpdir(), `cp-ent-${Date.now()}.plist`);
+  // Keep Claude's own device entitlements (microphone for dictation, camera, …).
+  const keys = cloneEntitlementKeys(readEntitlements(platform.claudeAppPath() || bundlePath));
+  log('clone entitlements:', keys.join(', '));
   fs.writeFileSync(ent, [
     '<?xml version="1.0" encoding="UTF-8"?>',
     '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">',
     '<plist version="1.0"><dict>',
-    '  <key>com.apple.security.cs.allow-jit</key><true/>',
-    '  <key>com.apple.security.cs.allow-unsigned-executable-memory</key><true/>',
-    '  <key>com.apple.security.cs.disable-library-validation</key><true/>',
-    '  <key>com.apple.security.cs.allow-dyld-environment-variables</key><true/>',
+    ...keys.map((k) => `  <key>${k}</key><true/>`),
     '</dict></plist>',
     '',
   ].join('\n'));
@@ -120,13 +181,25 @@ function macCreate(inst) {
   runLogged('/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister', ['-f', bundlePath]);
 
   log('macCreate done:', bundlePath, 'verified=', sign && sign.verified);
-  const out = { bundlePath, bundleId, claudeVersionAtBuild: platform.claudeVersion() };
+  const out = { bundlePath, bundleId, claudeVersionAtBuild: platform.claudeVersion(), signVersion: SIGN_VERSION };
   if (sign && sign.verified === false) out.buildError = 'Signature verify failed: ' + (sign.verifyError || 'unknown');
   return out;
 }
 
 function macRemove(inst) {
-  if (inst.bundlePath && fs.existsSync(inst.bundlePath)) run('rm', ['-rf', inst.bundlePath]);
+  const bundle = inst.bundlePath;
+  const LSREGISTER = '/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister';
+  // 1) Quit the running clone (its process command line carries --user-data-dir=<dataDir>).
+  if (inst.dataDir) { try { run('pkill', ['-f', '--', uddNeedle(inst.dataDir)]); } catch (_) {} }
+  if (bundle) {
+    // 2) Unregister from Launch Services so Finder/Dock/Spotlight forget the app.
+    try { run(LSREGISTER, ['-u', bundle]); } catch (_) {}
+    // 3) Delete the cloned app bundle.
+    if (fs.existsSync(bundle)) { try { run('rm', ['-rf', bundle]); } catch (_) {} }
+  }
+  // 4) Refresh the Dock so any lingering icon of the deleted app disappears.
+  try { run('killall', ['Dock']); } catch (_) {}
+  log('macRemove:', inst.name, '— quit, unregistered, deleted, Dock refreshed');
 }
 
 /* ---------------- Windows ---------------- */
@@ -184,6 +257,7 @@ function macApplyIconOnly(inst) {
   if (!inst.bundlePath || !fs.existsSync(inst.bundlePath) || !inst.iconPath) return { ok: false };
   macApplyIcon(inst.bundlePath, inst.iconPath);
   macSign(inst.bundlePath);
+  try { require('./instances').update(inst.id, { signVersion: SIGN_VERSION }); } catch (_) {}
   try {
     run('/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister', ['-f', inst.bundlePath]);
   } catch (_) {}
@@ -218,4 +292,4 @@ function rebuild(inst) {
   return { ...macCreate(inst), rebuilt: true };
 }
 
-module.exports = { create, remove, rebuild, applyIcon, slug };
+module.exports = { create, remove, rebuild, applyIcon, slug, cloneEntitlementKeys, SIGN_VERSION };
