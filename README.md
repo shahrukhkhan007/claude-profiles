@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/logo.png" alt="Claude Profiles logo" width="120" height="120" />
+</p>
+
 # Claude Profiles
 
 [![CI](https://github.com/shahrukhkhan007/claude-profiles/actions/workflows/ci.yml/badge.svg)](https://github.com/shahrukhkhan007/claude-profiles/actions/workflows/ci.yml)
@@ -7,6 +11,11 @@ Run several separate **Claude Desktop logins** side by side on one machine — l
 browser profiles, but for Claude. Add a profile, give it a name (and an icon),
 and launch it. Your work and personal logins stay signed in at the same time.
 
+Run **multiple Claude Desktop accounts** side by side — work, personal, and
+client logins open at the same time — on **macOS, Windows, and Linux**. It's a
+free, open-source **multi-account manager and profile switcher** for the Claude
+desktop app: no more signing out and back in to change accounts.
+
 Claude Profiles works on your **already-installed** Claude — it never bundles or
 redistributes Anthropic's app, and it never touches your conversations.
 
@@ -14,37 +23,73 @@ redistributes Anthropic's app, and it never touches your conversations.
 
 ## Install
 
-You don't need Node, a terminal, or any developer setup to use Claude Profiles —
-just download the installer for your OS.
+You don't need Node, a terminal, or any developer setup to use Claude Profiles.
+Just download the installer for your OS.
 
 > **Requirement:** [Claude Desktop](https://claude.ai/download) must already be
 > installed. Claude Profiles launches *your* Claude; it doesn't ship its own.
 
+> **Heads-up: the app is unsigned, so your OS warns you on first launch. This is normal and the app is safe.**
+> Claude Profiles is open-source and not signed or notarized (it has no paid Apple or Microsoft certificate), so:
+>
+> - **macOS** says it "could not verify" the app. On newer macOS the dialog may only show **Done** and **Move to Bin**. Do **not** click Move to Bin. Click **Done**, then open **System Settings → Privacy & Security**, scroll down, and click **Open Anyway** (confirm with Touch ID).
+> - **Windows** may show "Windows protected your PC"; click **More info**, then **Run anyway**.
+>
+> You only do this once per install. The per-OS steps below cover it in detail.
+
 ### macOS
 
-1. Download **`Claude Profiles-<version>.dmg`** from the
-   [**Releases**](https://github.com/shahrukhkhan007/claude-profiles/releases) page.
+1. Go to the [**Releases**](https://github.com/shahrukhkhan007/claude-profiles/releases/latest) page and download the
+   macOS **`.dmg`**. It's a **universal** build, so the same file runs on both
+   **Apple Silicon** (M1/M2/M3/M4) and **Intel** Macs. Not sure which you have?
+   Apple menu > **About This Mac**. (If a release ever lists separate files,
+   `...-arm64.dmg` is Apple Silicon and `...-x64.dmg` is Intel.)
 2. Open the `.dmg` and drag **Claude Profiles** into **Applications**.
-3. The app isn't notarized yet, so the first time you open it macOS will warn that
-   it's from an unidentified developer. To allow it: **right-click the app →
-   Open → Open**, or go to **System Settings → Privacy & Security** and click
-   **Open Anyway**. You only do this once.
+3. **First launch (unsigned app).** macOS says it "could not verify" Claude
+   Profiles, and on macOS Sequoia (15) and later the dialog may only show **Done**
+   and **Move to Bin**. This is expected for an un-notarized app, so do **not**
+   Move it to the Bin. Click **Done**, then open it using either option:
+
+   - **Option A, from System Settings (no terminal):** open **System Settings >
+     Privacy & Security**, scroll down, click **Open Anyway**, then confirm with
+     Touch ID. (On older macOS you can instead right-click the app, choose
+     **Open**, then **Open** again.)
+   - **Option B, from Terminal (one command):** run
+     `xattr -dr com.apple.quarantine "/Applications/Claude Profiles.app"`, then
+     open the app.
+
+   You only do this once.
 4. When you launch a **Custom** profile the first time, macOS may ask to use
-   "Claude Safe Storage" from your keychain — click **Always Allow**. It's your
+   "Claude Safe Storage" from your keychain, click **Always Allow**. It's your
    own Claude data on your own machine.
+5. **Voice dictation:** the first time you dictate in a profile, macOS asks for
+   microphone / speech-recognition access, click **Allow**. Quick Launch profiles
+   ask on behalf of **Claude Profiles**; Custom profiles ask as themselves. If you
+   created a Custom profile with v0.2.0 or earlier, click its **Update** button
+   once so dictation works.
 
 ### Windows
 
-1. Download the **`.exe`** installer from [Releases](https://github.com/shahrukhkhan007/claude-profiles/releases) and run it.
+1. Download the **`.exe`** installer from the [latest release](https://github.com/shahrukhkhan007/claude-profiles/releases/latest) and run it.
 2. SmartScreen may warn about an unknown publisher (the build isn't signed yet) —
    click **More info → Run anyway**.
 
 ### Linux
 
-Download from [Releases](https://github.com/shahrukhkhan007/claude-profiles/releases):
+Download the **`.AppImage`** or **`.deb`** from the
+[latest release](https://github.com/shahrukhkhan007/claude-profiles/releases/latest):
 
-- **AppImage** — `chmod +x 'Claude Profiles-<version>.AppImage'` then run it.
-- **.deb** — `sudo dpkg -i 'claude-profiles_<version>_amd64.deb'`.
+- **AppImage** — make it executable (`chmod +x <file>`) and run it.
+- **.deb** — install it with `sudo dpkg -i <file>`.
+
+### Updating
+
+You don't need to re-download from GitHub. When a new version is out,
+Claude Profiles shows an **Update now** banner (or use **About → Check for
+updates**). It downloads the new version, then **Restart & install** swaps it in
+and reopens the app. On Linux `.deb` installs it opens the package installer instead.
+The only network call is that check against GitHub Releases, and you can turn it
+off in **Settings → Updates**. On macOS the app must be in **Applications** to update itself.
 
 > **No prebuilt release yet?** Until installers are published on the Releases
 > page, you can build your own in one command — see
@@ -67,43 +112,15 @@ there are no confusing toggles:
 Add a profile with **+ Add**, pick a colour or an image, and **Launch**. Each
 profile keeps a completely separate login, history, and settings.
 
----
+## Troubleshooting
 
-## Build the installer yourself
+### macOS asks for your login password when opening a Custom profile
 
-If you'd rather build the DMG / installer from source (or there's no release for
-your platform yet):
+The first time you open a Custom profile, macOS may show a dialog such as "Claude wants to use your confidential information stored in your keychain" and ask for your Mac login password. This is macOS Keychain, not Claude Profiles. A Custom profile is a renamed copy of the Claude app with its own identity, so macOS treats it as a new app and asks permission the first time it reads Keychain items.
 
-**Prerequisites:** [Node.js 20+](https://nodejs.org) and
-[pnpm 10](https://pnpm.io/installation) (`npm install -g pnpm`).
+What to do: enter your **Mac login password** (the one you sign in to the Mac with, not your Claude account password) and click **Always Allow**. You only need to do this once per profile. If you click Deny the profile still opens, but it may not remember some logins; reopen it and choose Always Allow to clear that up.
 
-```bash
-git clone https://github.com/shahrukhkhan007/claude-profiles.git
-cd claude-profiles
-pnpm install
-
-pnpm dist:mac      # → release/Claude Profiles-<version>.dmg
-pnpm dist:win      # → release/  (.exe)   — build on Windows
-pnpm dist:linux    # → release/  (.AppImage, .deb)
-```
-
-The finished installer lands in the **`release/`** folder. On macOS, an unsigned
-local build skips code signing automatically; if you hit a signing error, prefix
-the command with `CSC_IDENTITY_AUTO_DISCOVERY=false`.
-
----
-
-## Develop
-
-To run the app from source with hot reload:
-
-```bash
-pnpm install
-pnpm dev          # Vite + Electron with live reload
-```
-
-Other scripts: `pnpm build` (bundle the UI), `pnpm test` (unit tests),
-`pnpm lint`, `pnpm e2e` (Playwright).
+If the prompt keeps coming back or the password is not accepted: confirm you are typing your macOS login password with Caps Lock off, and check that your **login** keychain is unlocked. Open **Keychain Access**; if the login keychain shows a lock icon, click it to unlock with your login password, then open the profile again.
 
 ## How it works
 
@@ -112,14 +129,16 @@ a separate login, history, and settings. The app records your profiles in
 `~/.claude-profiles/profiles.json` and reads live status (running / stopped)
 from the OS. It never touches your conversations or your main Claude data.
 
-See [`docs/DESIGN.md`](docs/DESIGN.md) for the full design and
-[`docs/TECHNICAL.md`](docs/TECHNICAL.md) for the per-OS implementation details.
-
 ## A note on safety
 
 Claude Profiles operates only on **your already-installed Claude** — it never
 bundles or redistributes Anthropic's app. It reads your local files and creates
 separate data folders; it never modifies your conversations.
+
+## Contributing
+
+Claude Profiles is open source (MIT). If you'd like to build it from source,
+run it in development, or contribute changes, see **[CONTRIBUTING.md](CONTRIBUTING.md)**.
 
 ## License
 

@@ -1,0 +1,43 @@
+name: Release
+
+# Publishes installers to a GitHub Release whenever you push a version tag,
+# e.g.  git tag v0.1.0 && git push origin v0.1.0
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write   # needed to create/update the Release
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 10 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: pnpm }
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+
+      - name: Package installer
+        run: pnpm exec electron-builder --publish never
+        env:
+          # Unsigned build — skip macOS code signing (see build.mac.identity: null too)
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      - name: Attach installers to the Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release/*.dmg
+            release/*.exe
+            release/*.AppImage
+            release/*.deb
+          fail_on_unmatched_files: false
