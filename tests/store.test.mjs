@@ -64,3 +64,26 @@ test('add persists iconData + a durable icon file (regression: iconData was drop
   assert.equal(l2.updHasData, true, 'update persists iconData');
   assert.equal(l2.updFile, true, 'update rewrites the durable icon file');
 });
+
+test('Dock icon: stored as its own file (not in profiles.json), cleared with the image, removed with the profile', () => {
+  const home = mkdtempSync(join(tmpdir(), 'cp-'));
+  const png = 'data:image/png;base64,' + Buffer.from('fakepng').toString('base64');
+  const out = run(`
+    const fs = require('fs');
+    const s = require(${JSON.stringify(store)});
+    const a = s.add({ name: 'Design', mode: 'custom', iconData: ${JSON.stringify(png)}, dockIconData: ${JSON.stringify(png)} });
+    const raw = fs.readFileSync(require('path').join(process.env.HOME, '.claude-profiles', 'profiles.json'), 'utf8');
+    console.log(JSON.stringify({ dock: a.dockIconPath, exists: fs.existsSync(a.dockIconPath), inJson: raw.includes('dockIconData') }));
+    const u = s.update(a.id, { iconData: null });
+    console.log(JSON.stringify({ cleared: u.dockIconPath }));
+    const b = s.update(a.id, { iconData: ${JSON.stringify(png)}, dockIconData: ${JSON.stringify(png)} });
+    s.remove(b.id);
+    console.log(JSON.stringify({ gone: !fs.existsSync(b.dockIconPath) }));
+  `, home);
+  const [l1, l2, l3] = out.trim().split('\n').map((x) => JSON.parse(x));
+  assert.match(l1.dock, /-dock\.png$/);
+  assert.equal(l1.exists, true);
+  assert.equal(l1.inJson, false, 'large data URL not duplicated into profiles.json');
+  assert.equal(l2.cleared, null, 'removing the image drops the Dock icon');
+  assert.equal(l3.gone, true, 'Dock icon file deleted with the profile');
+});

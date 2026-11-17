@@ -174,7 +174,7 @@ function macCreate(inst) {
   const setDisp = runLogged('/usr/libexec/PlistBuddy', ['-c', `Set :CFBundleDisplayName ${disp}`, plist]);
   if (!setDisp.ok) runLogged('/usr/libexec/PlistBuddy', ['-c', `Add :CFBundleDisplayName string ${disp}`, plist]);
 
-  try { macApplyIcon(bundlePath, inst.iconPath); log('icon applied'); } catch (e) { log('icon apply failed:', String(e).slice(0, 200)); }
+  try { macApplyIcon(bundlePath, inst.dockIconPath || inst.iconPath); log('icon applied'); } catch (e) { log('icon apply failed:', String(e).slice(0, 200)); }
   // Re-sign, preserving the JIT entitlements Electron needs (see macSign).
   const sign = macSign(bundlePath);
   // Register the clone with Launch Services so the Dock/Finder see it.
@@ -254,8 +254,9 @@ function linuxRemove(inst) {
 // Re-apply just the Dock icon to an existing macOS clone (used when a custom
 // profile's image is edited) without re-cloning the whole app.
 function macApplyIconOnly(inst) {
-  if (!inst.bundlePath || !fs.existsSync(inst.bundlePath) || !inst.iconPath) return { ok: false };
-  macApplyIcon(inst.bundlePath, inst.iconPath);
+  const icon = inst.dockIconPath || inst.iconPath;
+  if (!inst.bundlePath || !fs.existsSync(inst.bundlePath) || !icon) return { ok: false };
+  macApplyIcon(inst.bundlePath, icon);
   macSign(inst.bundlePath);
   try { require('./instances').update(inst.id, { signVersion: SIGN_VERSION }); } catch (_) {}
   try {

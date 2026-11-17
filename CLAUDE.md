@@ -75,11 +75,21 @@ user's conversations.
   It selects by `.add-modal`, placeholder text, `.card`, `.sheet2`, etc.
 - **Imported session names** come from the transcript's LAST `{"type":"custom-title"}`
   line (what Claude's sidebar shows), not the first user message.
-- **Quick Launch spawns Claude's binary directly**, so macOS TCC treats Claude Profiles
-  as the "responsible" app for mic/speech. That's why `build.mac.extendInfo` carries
-  `NSMicrophoneUsageDescription` etc. Don't remove them, or dictation breaks.
+- **Quick Launch starts Claude via `open -n -a Claude.app`** (LaunchServices), so macOS
+  treats Claude itself as the "responsible" app for mic/Desktop/Documents prompts. Spawning
+  the inner binary directly made Claude Profiles the responsible process: repeated
+  "Claude Profiles would like to access…" prompts. Direct exec is only a fallback;
+  `build.mac.extendInfo` usage strings stay for that fallback.
+- **Import reproduces the original session registration** (same `sessionId`, so
+  `spawnedFrom` parent links nest). Never copy per-session keys (`SESSION_KEYS`) from a
+  template, always reset permission grants (`GRANT_KEYS`), and skip transcripts listed in
+  another session's `priorCliSessionIds` (earlier segments after rewind/compaction).
 - **Self-update can't use electron-updater/Squirrel** (unsigned builds). `updater.js`
   installs from a detached helper after the app quits; the renderer never passes a path.
+- **Icons:** the picker keeps up to 2048px and the cropper saves 1024px (it used to shrink
+  to 128px first → blurry avatars and Dock icons). Custom profiles also get `dockIconPath`:
+  a 1024px macOS-template icon (824px rounded square + margin + shadow) drawn in the
+  renderer (`makeDockIcon`), used for the clone's `.icns` so it matches other Dock icons.
 - Cloned apps prompt once for macOS Keychain access ("Claude Safe Storage") — expected.
 - Don't commit build output: `release/`, `dist/`, `node_modules/`, `.cp-debug.log`.
 

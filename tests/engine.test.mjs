@@ -31,9 +31,11 @@ test('stopped simple profile launches exactly one instance', () => {
   launch({ id: 'b', dataDir: '/tmp/Claude-x', mode: 'simple' });
   assert.notEqual(lastSpawn, '', 'should launch an instance');
   assert.ok(lastSpawn.includes('--user-data-dir=/tmp/Claude-x'), 'with its own isolated data dir');
-  // Quick Launch runs Claude's inner binary directly when the app is present
-  // (bypasses the single-instance block); otherwise it falls back to `open`.
-  assert.ok(/MacOS\/Claude --user-data-dir=/.test(lastSpawn) || lastSpawn.startsWith('open -n -a Claude --args'), 'uses inner binary or open fallback');
+  // Quick Launch starts Claude
+  // through LaunchServices (`open -n -a <Claude.app>`), so macOS treats Claude itself as the
+  // responsible app for mic/Desktop permission prompts (not Claude Profiles).
+  assert.ok(/^open -n -a \S*Claude(\.app)? --args --user-data-dir=/.test(lastSpawn) || /^open -n -a .*Claude\.app --args/.test(lastSpawn), 'launches via open -n: ' + lastSpawn);
+  assert.ok(!/Contents\/MacOS\/Claude --user-data-dir/.test(lastSpawn), 'does not exec the inner binary (that made us the responsible process)');
 });
 
 test('stopped custom profile launches its own bundle', () => {

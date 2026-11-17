@@ -83,7 +83,7 @@ function existingRegData(dirs) {
       if (!data) continue;
       const cli = data.cliSessionId || data.sessionId;
       if (!cli || (cli in map)) continue;
-      map[String(cli)] = { file: f, lastActivityAt: data.lastActivityAt || 0, title: data.title || '' };
+      map[String(cli)] = { file: f, lastActivityAt: data.lastActivityAt || 0, title: data.title || '', data };
     }
   }
   return map;
@@ -108,15 +108,21 @@ function existingAcross(dirs) {
 
 // Richest existing registration anywhere, used as the field schema template.
 function bestTemplate(indexDirs) {
+  // Prefer the profile's own sessions; imported copies are only a fallback.
   let best = null;
+  let bestImported = null;
   for (const d of indexDirs) {
     for (const f of globLocal(d)) {
       const data = readJson(f);
       if (!data) continue;
-      if (best === null || Object.keys(data).length > Object.keys(best).length) best = data;
+      const imported = data.importedBy === 'claude-profiles';
+      const cur = imported ? bestImported : best;
+      if (cur === null || Object.keys(data).length > Object.keys(cur).length) {
+        if (imported) bestImported = data; else best = data;
+      }
     }
   }
-  return best;
+  return best || bestImported;
 }
 
 function cleanUserText(raw) {
@@ -194,26 +200,81 @@ function sessionName(lines) {
   return found['custom-title'] || found['agent-name'] || found.summary || null;
 }
 
-// Titles other Claude data dirs (main Claude + other profiles) already show for
-// each session, keyed by cliSessionId. Used when a transcript carries no name.
-function titleHints(dataDirs) {
-  const out = {};
+// Keys that describe ONE session's own state and history (its parent link, PRs,
+// branches, worktree, turn bookkeeping…). They must never be copied from a
+// template session onto a different session — doing so made imported sessions
+// claim another session's parent, PRs and branches.
+const SESSION_KEYS = new Set([
+  'spawnedFrom', 'forkedFromSessionId', 'btwLoweredFrom', 'devIntents', 'devIntentTriggers',
+  'sideSessionStartsSinceUserMessage', 'sideSessionReportOwed', 'sideSessionNotes', 'priorErrorMark',
+  'scratchFilesLeftIn', 'scratchPromptRecents', 'lastTurnStopped', 'lastTurnCutShort', 'lastTurnReport',
+  'lastTurnEdgeAt', 'lastAssistantUuid', 'lastAssistantCliSessionId', 'latestUserFrameAt', 'writtenBranches',
+  'writtenRepositories', 'resolvedBackgroundTaskSuggestions', 'autoFixNoticeSent', 'setupTools',
+  'publishedArtifacts', 'priorCliSessionIds', 'priorCliSessionLeftAt', 'rewindEdges', 'transcriptModelStates',
+  'worktreePath', 'worktreeName', 'sourceBranch', 'branch', 'startChain', 'gitAnchors', 'gitAnchorsLookupOnly',
+  'gitAnchorsFolderRealpath', 'peerReceipts', 'peerMessaged', 'prs', 'folderPlace', 'titleTurn', 'indexedAt',
+  'pendingSystemReminder', 'turnWrapUp', 'shellFolders', 'postTurnSummary', 'postTurnSummaryFor',
+  'completedTurns', 'toolSurfaceSnapshot', 'promptAppendSnapshot', 'interruptedAwaitingPerson', 'importedBy',
+]);
+// Per-session "always allow" permission grants. Always start empty on import:
+// a grant the user gave in one session must never silently apply elsewhere.
+const GRANT_KEYS = { alwaysAllowedReasons: [], sessionPermissionUpdates: [] };
+// Bound to the account/workspace (connectors, environments): take these from
+// the target profile's own sessions, not from another account.
+const ACCOUNT_KEYS = ['enabledMcpTools', 'remoteMcpServersConfig', 'startedFromEnvironmentId', 'envScopeId', 'autoChosenInApp'];
+const IMPORTED_BY = 'claude-profiles';
+
+const clone = (o) => JSON.parse(JSON.stringify(o));
+
+// The registrations other Claude data dirs (main Claude + other profiles) hold
+// for each session, so an import can reproduce the session exactly: same
+// internal id (keeps parent/child links working), same name and metadata.
+// Also collects transcript ids that are only EARLIER SEGMENTS of a session
+// (Claude starts a new transcript after a rewind/compaction and lists the old
+// ones in priorCliSessionIds); those must not be imported as separate sessions.
+function sourceRegistrations(dataDirs) {
+  const byCli = {};
+  const bySessionId = {};
+  const priorOf = {}; // prior cli -> owning cli
   for (const dir of dataDirs || []) {
     if (!dir || !safeIsDir(dir)) continue;
-    const { indexDirs } = findIndexDirs(dir);
-    for (const d of indexDirs) {
+    for (const d of findIndexDirs(dir).indexDirs) {
       for (const f of globLocal(d)) {
         const data = readJson(f);
-        const cli = data && (data.cliSessionId || data.sessionId);
-        if (!cli || !data.title) continue;
-        const prev = out[cli];
-        if (!prev || (data.lastActivityAt || 0) > prev.at) out[cli] = { title: String(data.title), at: data.lastActivityAt || 0 };
+        const cli = data && data.cliSessionId;
+        if (!cli || data.importedBy === IMPORTED_BY) continue; // only original sessions are sources
+        // First data dir wins (callers list main Claude first): that's the original,
+        // not a copy another profile got from an older import.
+        if (!byCli[cli]) byCli[cli] = data;
       }
     }
   }
+  for (const [cli, data] of Object.entries(byCli)) {
+    if (data.sessionId) bySessionId[data.sessionId] = cli;
+    for (const p of data.priorCliSessionIds || []) priorOf[String(p)] = cli;
+  }
+  return { byCli, bySessionId, priorOf };
+}
+
+// Titles other Claude data dirs already show for each session, keyed by cliSessionId.
+function titleHints(dataDirs) {
+  const { byCli } = sourceRegistrations(dataDirs);
   const map = {};
-  for (const k of Object.keys(out)) map[k] = out[k].title;
+  for (const [cli, data] of Object.entries(byCli)) if (data.title) map[cli] = String(data.title);
   return map;
+}
+
+function hintsFrom(opts) {
+  if (opts.titleHints) return opts.titleHints;
+  const map = {};
+  for (const [cli, data] of Object.entries((opts.sources && opts.sources.byCli) || {})) if (data.title) map[cli] = String(data.title);
+  return map;
+}
+
+// The parent session's transcript id, when this session was started from another.
+function parentCliOf(source, sources) {
+  const sid = source && source.spawnedFrom && source.spawnedFrom.sessionId;
+  return (sid && sources && sources.bySessionId[sid]) || null;
 }
 
 // Final title: transcript name > another profile's sidebar name > first message.
@@ -223,22 +284,46 @@ function resolveTitle(meta, hints) {
   return h || meta.title;
 }
 
-function buildRegistration(template, meta) {
-  const reg = template ? JSON.parse(JSON.stringify(template)) : {};
+function buildRegistration(template, meta, source) {
   const nowMs = Date.now();
-  reg.sessionId = `local_${crypto.randomUUID()}`;
+  let reg;
+  if (source) {
+    // Reproduce the original session (same id, parent link, metadata)…
+    reg = clone(source);
+    // …but with this account's connectors/environment, not the source account's.
+    for (const k of ACCOUNT_KEYS) {
+      if (template && k in template) reg[k] = clone(template[k]);
+      else delete reg[k];
+    }
+  } else {
+    reg = template ? clone(template) : {};
+    for (const k of Object.keys(reg)) if (SESSION_KEYS.has(k)) delete reg[k];
+    reg.sessionId = `local_${crypto.randomUUID()}`;
+  }
+  for (const [k, v] of Object.entries(GRANT_KEYS)) if (k in reg || !source) reg[k] = clone(v);
   reg.cliSessionId = meta.cliSessionId;
   reg.title = meta.title;
-  reg.createdAt = meta.createdAt;
-  reg.lastActivityAt = meta.lastActivityAt;
-  reg.lastFocusedAt = meta.lastActivityAt || nowMs;
-  reg.isArchived = false;
-  const cwd = meta.cwd || HOME; // never borrow the template's cwd
+  reg.createdAt = (source && source.createdAt) || meta.createdAt;
+  reg.lastActivityAt = Math.max((source && source.lastActivityAt) || 0, meta.lastActivityAt || 0);
+  reg.lastFocusedAt = reg.lastActivityAt || nowMs;
+  reg.isArchived = false; // the user explicitly picked it
+  const cwd = (source && source.cwd) || meta.cwd || HOME; // never borrow the template's cwd
   reg.cwd = cwd;
-  reg.originCwd = cwd;
+  reg.originCwd = (source && source.originCwd) || cwd;
   if ('workingDirectory' in reg) reg.workingDirectory = cwd;
-  if (meta.model) reg.model = meta.model;
+  if (meta.model && !source) reg.model = meta.model;
+  reg.importedBy = IMPORTED_BY;
   return reg;
+}
+
+// An existing registration needs repair when it came from an older import that
+// gave the session a new random id (breaking parent/child nesting).
+function needsRepair(existingEntry, source) {
+  if (!existingEntry || !source || !existingEntry.data) return false;
+  const cur = existingEntry.data;
+  if (cur.sessionId === source.sessionId) return false;
+  // Same transcript under a different id can only be a copy, never a native session.
+  return true;
 }
 
 function scanTranscripts(projectsDir, filter) {
@@ -311,35 +396,75 @@ function bridgeInto(appSupport, opts = {}) {
   const scan = scanTranscripts(projectsDir, filter);
   if (scan.error) return { ok: false, error: scan.error };
 
+  const sources = opts.sources || { byCli: {}, bySessionId: {}, priorOf: {} };
+  const ownPriors = {};
+  for (const [cli, e] of Object.entries(existing)) for (const p of (e.data && e.data.priorCliSessionIds) || []) ownPriors[String(p)] = cli;
+  const isPrior = (c) => !!(sources.priorOf[c] || ownPriors[c]);
+  const hints = hintsFrom(opts);
+
   const byCli = {};
-  for (const t of scan.list) byCli[path.basename(t).replace(/\.jsonl$/, '')] = t;
+  for (const t of scan.list) {
+    const c = path.basename(t).replace(/\.jsonl$/, '');
+    if (!isPrior(c)) byCli[c] = t; // earlier segments belong to another session
+  }
   const allCli = Object.keys(byCli);
   const unregistered = allCli.filter((c) => !(c in existing));
   const only = Array.isArray(opts.only) && opts.only.length ? new Set(opts.only.map(String)) : null;
+  // A child session only nests if its parent is there too: bring parents along.
+  if (only) {
+    for (const c of [...only]) {
+      let p = parentCliOf(sources.byCli[c], sources);
+      while (p && byCli[p] && !only.has(p)) {
+        if (!(p in existing) || needsRepair(existing[p], sources.byCli[p])) only.add(p);
+        p = parentCliOf(sources.byCli[p], sources);
+      }
+    }
+  }
   const newCli = only ? [...only].filter((c) => byCli[c] && !(c in existing)) : unregistered;
   const refreshCli = only ? [...only].filter((c) => byCli[c] && (c in existing)) : [];
-  const base = { ok: true, target, projectsDir, found: scan.list.length, already: allCli.length - unregistered.length, todo: unregistered.length, selectedNew: newCli.length, selectedRefresh: refreshCli.length };
+  const base = { ok: true, target, projectsDir, found: allCli.length, already: allCli.length - unregistered.length, todo: unregistered.length, selectedNew: newCli.length, selectedRefresh: refreshCli.length };
 
   if (!apply) return { ...base, applied: false };
-  if (!newCli.length && !refreshCli.length) return { ...base, applied: true, written: 0, refreshed: 0 };
+  if (!newCli.length && !refreshCli.length) return { ...base, applied: true, written: 0, refreshed: 0, repaired: 0, removedDuplicates: 0 };
 
   const backupPath = backup(target);
   let written = 0;
   let refreshed = 0;
+  let repaired = 0;
+  let removedDuplicates = 0;
+  const errors = [];
+  const writeReg = (reg) => fs.writeFileSync(path.join(target, `${reg.sessionId}.json`), JSON.stringify(reg, null, 2), 'utf8');
+  const touched = new Set();
   for (const c of newCli) {
     const meta = transcriptMeta(byCli[c]);
     if (!meta) continue;
-    meta.title = resolveTitle(meta, opts.titleHints);
-    const reg = buildRegistration(template, meta);
-    try { fs.writeFileSync(path.join(target, `${reg.sessionId}.json`), JSON.stringify(reg, null, 2), 'utf8'); written++; } catch (_) {}
+    meta.title = resolveTitle(meta, hints);
+    const reg = buildRegistration(template, meta, sources.byCli[c]);
+    try { writeReg(reg); written++; touched.add(c); } catch (_) {}
   }
   for (const c of refreshCli) {
     const meta = transcriptMeta(byCli[c]);
     if (!meta) continue;
-    meta.title = resolveTitle(meta, opts.titleHints);
-    if (refreshRegistration(existing[c].file, meta)) refreshed++;
+    meta.title = resolveTitle(meta, hints);
+    const src = sources.byCli[c];
+    if (needsRepair(existing[c], src)) {
+      // Rewrite with the original id so parent/child links resolve; drop the old copy.
+      try {
+        writeReg(buildRegistration(template, meta, src));
+        if (path.basename(existing[c].file) !== `${src.sessionId}.json`) fs.unlinkSync(existing[c].file);
+        refreshed++; repaired++; touched.add(c);
+      } catch (e) { errors.push(String((e && e.message) || e)); }
+    } else if (refreshRegistration(existing[c].file, meta)) { refreshed++; touched.add(c); }
   }
-  return { ...base, applied: true, written, refreshed, backup: backupPath };
+  // Older imports registered earlier transcript segments as separate sessions
+  // (the duplicates). Remove those copies for every session handled now.
+  for (const [cli, e] of Object.entries(existing)) {
+    const owner = sources.priorOf[cli] || ownPriors[cli];
+    // Claude never registers an earlier segment on its own, so such an entry is always a leftover copy.
+    if (!owner || !touched.has(owner)) continue;
+    try { fs.unlinkSync(e.file); removedDuplicates++; } catch (_) {}
+  }
+  return { ...base, applied: true, written, refreshed, repaired, removedDuplicates, errors, backup: backupPath };
 }
 
 function listSessions(appSupport, opts = {}) {
@@ -351,16 +476,31 @@ function listSessions(appSupport, opts = {}) {
   const existing = acctDirs.length ? existingRegData(acctDirs) : {};
   const scan = scanTranscripts(projectsDir, opts.filter || null);
   if (scan.error) return { ok: false, error: scan.error };
+  const sources = opts.sources || { byCli: {}, bySessionId: {}, priorOf: {} };
+  const ownPriors = {};
+  for (const [cli, e] of Object.entries(existing)) for (const p of (e.data && e.data.priorCliSessionIds) || []) ownPriors[String(p)] = cli;
+  const hints = hintsFrom(opts);
+  // Registered copies of earlier transcript segments (duplicates from older imports), per owner.
+  const dupesOf = {};
+  for (const cli of Object.keys(existing)) {
+    const owner = sources.priorOf[cli] || ownPriors[cli];
+    if (owner) dupesOf[owner] = (dupesOf[owner] || 0) + 1;
+  }
   const sessions = [];
   for (const t of scan.list) {
+    const cli = path.basename(t).replace(/\.jsonl$/, '');
+    if (sources.priorOf[cli] || ownPriors[cli]) continue; // part of another session
     const meta = transcriptMeta(t);
     if (!meta) continue;
-    meta.title = resolveTitle(meta, opts.titleHints);
+    meta.title = resolveTitle(meta, hints);
     const reg = existing[meta.cliSessionId];
+    const src = sources.byCli[meta.cliSessionId];
     const registered = !!reg;
-    // Stale = transcript has newer activity, or the session was renamed since import.
+    // Stale = newer activity, renamed since import, imported with a broken id, or has duplicate copies.
     const renamed = registered && meta.named && reg.title && reg.title !== meta.title;
-    const stale = registered && (renamed || (meta.lastActivityAt || 0) > (reg.lastActivityAt || 0) + 2000);
+    const repair = registered && needsRepair(reg, src);
+    const dupes = dupesOf[meta.cliSessionId] || 0;
+    const stale = registered && (repair || dupes > 0 || renamed || (meta.lastActivityAt || 0) > (reg.lastActivityAt || 0) + 2000);
     sessions.push({
       cliSessionId: meta.cliSessionId,
       title: meta.title,
@@ -369,10 +509,16 @@ function listSessions(appSupport, opts = {}) {
       firstMessage: meta.firstMessage || null,
       lastActivityAt: meta.lastActivityAt,
       createdAt: meta.createdAt,
+      parentCli: parentCliOf(src, sources),
       registered,
+      repair: repair || dupes > 0,
+      duplicates: dupes,
       status: registered ? (stale ? 'stale' : 'current') : 'new',
     });
   }
+  // Drop parent links to sessions that aren't in the list.
+  const present = new Set(sessions.map((x) => x.cliSessionId));
+  for (const x of sessions) if (x.parentCli && !present.has(x.parentCli)) x.parentCli = null;
   sessions.sort((a, b) => (b.lastActivityAt || 0) - (a.lastActivityAt || 0));
   return { ok: true, hasIndex: roots.length > 0, canImport: !!target, count: sessions.length, sessions };
 }
@@ -380,5 +526,6 @@ function listSessions(appSupport, opts = {}) {
 module.exports = {
   bridgeInto, DEFAULT_PROJECTS, BACKUP_ROOT,
   findIndexDirs, currentAccountUuid, bestTemplate, transcriptMeta, listSessions,
-  buildRegistration, scanTranscripts, pickTarget, sessionName, titleHints, resolveTitle,
+  buildRegistration, scanTranscripts, pickTarget, sessionName, titleHints, resolveTitle, sourceRegistrations,
+  SESSION_KEYS, GRANT_KEYS,
 };
