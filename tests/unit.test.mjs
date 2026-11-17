@@ -44,3 +44,12 @@ test('updateAvailable flags clones signed before the mic-entitlement fix', () =>
   assert.equal(updateAvailable({ mode: 'custom', bundlePath: '/A.app', claudeVersionAtBuild: '1.1' }, '1.1'), true);
   assert.equal(updateAvailable({ mode: 'custom', bundlePath: '/A.app', signVersion: 2, claudeVersionAtBuild: '1.1' }, '1.1'), false);
 });
+
+test('updateAvailable flags custom clones whose picked image has no macOS-shaped Dock icon yet', () => {
+  Object.defineProperty(process, 'platform', { value: 'darwin', configurable: true });
+  const { updateAvailable } = require('../engine/index.js');
+  const base = { mode: 'custom', bundlePath: '/A.app', signVersion: 2, claudeVersionAtBuild: '1.1' };
+  assert.equal(updateAvailable({ ...base, iconData: 'data:x' }, '1.1'), true);
+  assert.equal(updateAvailable({ ...base, iconData: 'data:x', dockIconPath: '/i-dock.png' }, '1.1'), false);
+  assert.equal(updateAvailable({ ...base }, '1.1'), false, 'no image → nothing to update');
+});

@@ -12,14 +12,14 @@ const ICON_DIR = path.join(CONFIG_DIR, 'icons');
 
 // Persist a picked image (data URL) to a stable file we own, so the card and
 // any later custom rebuild keep working even if the original file is moved.
-function persistIcon(id, iconData) {
+function persistIcon(id, iconData, suffix = '') {
   if (!iconData || typeof iconData !== 'string') return null;
   const m = iconData.match(/^data:image\/([A-Za-z0-9.+-]+);base64,(.+)$/);
   if (!m) return null;
   try {
     fs.mkdirSync(ICON_DIR, { recursive: true });
     const ext = m[1].toLowerCase() === 'jpeg' ? 'jpg' : m[1].toLowerCase();
-    const file = path.join(ICON_DIR, `${id}.${ext}`);
+    const file = path.join(ICON_DIR, `${id}${suffix}.${ext}`);
     fs.writeFileSync(file, Buffer.from(m[2], 'base64'));
     return file;
   } catch (_) { return null; }
@@ -55,7 +55,7 @@ function dataDirFor(name) {
 function list() { return readAll(); }
 function get(id) { return readAll().find((i) => i.id === id) || null; }
 
-function add({ name, mode = 'simple', color = 'blue', iconPath = null, iconData = null }) {
+function add({ name, mode = 'simple', color = 'blue', iconPath = null, iconData = null, dockIconData = null }) {
   const instances = readAll();
   const dataDir = dataDirFor(name);
   fs.mkdirSync(dataDir, { recursive: true });
@@ -68,6 +68,8 @@ function add({ name, mode = 'simple', color = 'blue', iconPath = null, iconData 
     color,
     iconData: iconData || null,      // shown on the card
     iconPath: stableIcon || iconPath, // durable source for the custom .icns
+    // macOS-shaped Dock icon (rounded square + standard padding/shadow), made in the renderer.
+    dockIconPath: persistIcon(id, dockIconData, '-dock'),
     dataDir,
     bundlePath: null,     // set in Phase 2 for macOS custom clones
     createdAt: new Date().toISOString(),
@@ -85,6 +87,9 @@ function update(id, patch) {
   if (idx === -1) return null;
   const p = { ...(patch || {}) };
   if (p.iconData) { const f = persistIcon(id, p.iconData); if (f) p.iconPath = f; }
+  if (p.dockIconData) { const f = persistIcon(id, p.dockIconData, '-dock'); if (f) p.dockIconPath = f; }
+  if ('iconData' in p && !p.iconData) p.dockIconPath = null; // image removed → back to default icon
+  delete p.dockIconData; // the file is the source of truth; don't bloat profiles.json
   instances[idx] = { ...instances[idx], ...p };
   writeAll(instances);
   return instances[idx];
@@ -103,8 +108,9 @@ function remove(id, keepData) {
     }
     try {
       for (const ext of ['png', 'jpg', 'jpeg', 'gif', 'webp', 'icns', 'ico']) {
-        const f = path.join(ICON_DIR, `${id}.${ext}`);
-        if (fs.existsSync(f)) fs.rmSync(f, { force: true });
+        for (const f of [path.join(ICON_DIR, `${id}.${ext}`), path.join(ICON_DIR, `${id}-dock.${ext}`)]) {
+          if (fs.existsSync(f)) fs.rmSync(f, { force: true });
+        }
       }
     } catch (_) {}
   }

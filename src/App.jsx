@@ -52,7 +52,9 @@ function fmt(dt) { try { return dt ? new Date(dt).toLocaleString() : '—'; } ca
 function Avatar({ color, iconData, name, lg, sm }) {
   const custom = isHex(color);
   const style = custom ? { background: `linear-gradient(160deg, color-mix(in srgb, ${color} 82%, #fff), ${color})` } : undefined;
-  return <div className={'icon ' + (custom ? '' : (color || 'blue')) + (lg ? ' lg' : '') + (sm ? ' sm' : '')} style={style}>{iconData ? <img src={iconData} alt="" /> : initials(name)}</div>;
+  // With an image, use a neutral backdrop so transparent edges don't show the colour.
+  if (iconData) return <div className={'icon has-img' + (lg ? ' lg' : '') + (sm ? ' sm' : '')}><img src={iconData} alt="" /></div>;
+  return <div className={'icon ' + (custom ? '' : (color || 'blue')) + (lg ? ' lg' : '') + (sm ? ' sm' : '')} style={style}>{initials(name)}</div>;
 }
 function Swatches({ value, onColor, disabled }) {
   return (
@@ -62,7 +64,53 @@ function Swatches({ value, onColor, disabled }) {
     </div>
   );
 }
-function Cropper({ src, onCancel, onDone, out = 512, frame = 240 }) {
+// macOS app-icon template: the artwork is a rounded square ("squircle") of
+// 824px centred on a 1024px canvas (100px transparent margin), with a soft
+// drop shadow. Following it makes a Custom profile's Dock icon the same size
+// and shape as every other app instead of a full-bleed square.
+const DOCK = { canvas: 1024, size: 824, radius: 185 };
+function squirclePath(ctx, x, y, s, r) {
+  // Continuous-corner rounded square (closer to Apple's shape than arcTo circles).
+  const k = 0.552 * 1.28; // longer handles → smoother "squircle" shoulders
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + s - r, y);
+  ctx.bezierCurveTo(x + s - r + r * k, y, x + s, y + r - r * k, x + s, y + r);
+  ctx.lineTo(x + s, y + s - r);
+  ctx.bezierCurveTo(x + s, y + s - r + r * k, x + s - r + r * k, y + s, x + s - r, y + s);
+  ctx.lineTo(x + r, y + s);
+  ctx.bezierCurveTo(x + r - r * k, y + s, x, y + s - r + r * k, x, y + s - r);
+  ctx.lineTo(x, y + r);
+  ctx.bezierCurveTo(x, y + r - r * k, x + r - r * k, y, x + r, y);
+  ctx.closePath();
+}
+function makeDockIcon(src) {
+  return new Promise((resolve) => {
+    const im = new Image();
+    im.onload = () => {
+      try {
+        const { canvas: C, size: S, radius: R } = DOCK;
+        const c = document.createElement('canvas'); c.width = C; c.height = C;
+        const ctx = c.getContext('2d');
+        const o = (C - S) / 2;
+        ctx.save();
+        ctx.shadowColor = 'rgba(0,0,0,0.28)'; ctx.shadowBlur = 28; ctx.shadowOffsetY = 12;
+        squirclePath(ctx, o, o, S, R); ctx.fillStyle = '#ffffff'; ctx.fill();
+        ctx.restore();
+        ctx.save();
+        squirclePath(ctx, o, o, S, R); ctx.clip();
+        const side = Math.min(im.naturalWidth, im.naturalHeight);
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(im, (im.naturalWidth - side) / 2, (im.naturalHeight - side) / 2, side, side, o, o, S, S);
+        ctx.restore();
+        resolve(c.toDataURL('image/png'));
+      } catch (_) { resolve(null); }
+    };
+    im.onerror = () => resolve(null);
+    im.src = src;
+  });
+}
+function Cropper({ src, onCancel, onDone, out = 1024, frame = 240 }) {
   const F = frame;
   const imgRef = useRef(null);
   const dragRef = useRef(null);
@@ -100,6 +148,7 @@ function Cropper({ src, onCancel, onDone, out = 512, frame = 240 }) {
     try {
       const c = document.createElement('canvas'); c.width = out; c.height = out;
       const ctx = c.getContext('2d');
+      ctx.imageSmoothingQuality = 'high';
       const r = out / F;
       ctx.drawImage(imgRef.current, 0, 0, nat.w, nat.h, pos.x * r, pos.y * r, dispW * r, dispH * r);
       onDone(c.toDataURL('image/png'));
@@ -108,7 +157,7 @@ function Cropper({ src, onCancel, onDone, out = 512, frame = 240 }) {
   return (
     <div className="overlay" onClick={onCancel}>
       <div className="modal crop-modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-h"><h3>Position icon</h3><p>Drag to move and zoom to fit. The square area becomes the icon.</p></div>
+        <div className="modal-h"><h3>Position icon</h3><p>Drag to move and zoom to fit. The highlighted area is exactly what your icon will show.</p></div>
         <div className="crop-stage">
           <div className="crop-frame" style={{ width: F, height: F }} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerLeave={up}>
             <img src={src} alt="" draggable={false} style={{ position: 'absolute', left: pos.x, top: pos.y, width: dispW, height: dispH, maxWidth: 'none' }} />
@@ -123,6 +172,23 @@ function Cropper({ src, onCancel, onDone, out = 512, frame = 240 }) {
       </div>
     </div>
   );
+}
+function Chevron({ open }) { return <svg className={'chev' + (open ? ' open' : '')} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>; }
+function EyeOff() { return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 3l18 18" /><path d="M10.6 5.1A10.9 10.9 0 0 1 12 5c6.5 0 10 7 10 7a17.6 17.6 0 0 1-3.2 4.1M6.6 6.6C3.9 8.3 2 12 2 12s3.5 7 10 7a9.7 9.7 0 0 0 5.4-1.6" /><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" /></svg>; }
+// Order a project's sessions as a tree: each parent followed by the sessions
+// started from it (Claude's "sub-sessions"), indented one level per depth.
+function asTree(list) {
+  const ids = new Set(list.map((x) => x.cliSessionId));
+  const kids = {};
+  const roots = [];
+  for (const x of list) {
+    if (x.parentCli && ids.has(x.parentCli) && x.parentCli !== x.cliSessionId) (kids[x.parentCli] = kids[x.parentCli] || []).push(x);
+    else roots.push(x);
+  }
+  const out = [];
+  const walk = (x, depth) => { out.push({ x, depth }); for (const k of kids[x.cliSessionId] || []) if (depth < 6) walk(k, depth + 1); };
+  roots.forEach((r) => walk(r, 0));
+  return out;
 }
 function Kebab() { return <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>; }
 function PhotoIcon() { return <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4.5" width="18" height="15" rx="3"/><circle cx="8.5" cy="10" r="1.7"/><path d="M4 18l5-5 4 3.5L16.5 13 20 16.5"/></svg>; }
@@ -150,6 +216,9 @@ export default function App() {
   const [cropSrc, setCropSrc] = useState(null);
   const [detail, setDetail] = useState(null);
   const [editId, setEditId] = useState(null);
+  const [editMode, setEditMode] = useState(null);
+  const [iconDirty, setIconDirty] = useState(false);
+  const [dockPreview, setDockPreview] = useState(null);
   const [confirmStop, setConfirmStop] = useState(null);
   const [confirmPurge, setConfirmPurge] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -192,7 +261,16 @@ export default function App() {
       setBridgeBusy(false);
     });
   }, []);
-  const toggleSel = (id) => setBridgeSel((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const toggleSel = (id) => setBridgeSel((prev) => {
+    const n = new Set(prev);
+    if (n.has(id)) { n.delete(id); return n; }
+    n.add(id);
+    // A sub-session only nests in Claude if its parent is imported too.
+    const byId = Object.fromEntries(((bridgeList && bridgeList.sessions) || []).map((x) => [x.cliSessionId, x]));
+    let p = byId[id] && byId[id].parentCli;
+    for (let i = 0; p && byId[p] && i < 8; i++) { if (byId[p].status !== 'current') n.add(p); p = byId[p].parentCli; }
+    return n;
+  });
   const toggleCollapse = (proj) => setBridgeCollapsed((prev) => { const n = new Set(prev); if (n.has(proj)) n.delete(proj); else n.add(proj); return n; });
   const toggleGroup = (ids) => setBridgeSel((prev) => { const n = new Set(prev); const all = ids.every((id) => n.has(id)); for (const id of ids) { if (all) n.delete(id); else n.add(id); } return n; });
   const applyBridge = useCallback(() => {
@@ -256,16 +334,31 @@ export default function App() {
   useEffect(() => { document.documentElement.classList.toggle('glass', glass); lsSet('glass', glass ? '1' : '0'); if (api && api.setGlass) api.setGlass(glass); }, [glass]);
 
   const pick = async () => { setPickBusy(true); try { const r = await api.pickIcon(); if (r && r.dataUrl) { setIconPath(r.path); setCropSrc(r.dataUrl); } } finally { setPickBusy(false); } };
-  const resetForm = () => { setName(''); setColor('blue'); setIconPath(null); setIconData(null); setConfirmRemoveImg(false); setCropSrc(null); };
+  const resetForm = () => { setName(''); setColor('blue'); setIconPath(null); setIconData(null); setConfirmRemoveImg(false); setCropSrc(null); setIconDirty(false); setEditMode(null); };
   const openAdd = () => { setEditId(null); resetForm(); setAdding(true); };
-  const openEditForm = (d) => { setEditId(d.id); setName(d.name); setColor(d.color || 'blue'); setIconData(d.iconData || null); setIconPath(null); setConfirmRemoveImg(false); setDetail(null); setAdding(true); };
+  const openEditForm = (d) => { setEditId(d.id); setEditMode(d.mode); setIconDirty(false); setName(d.name); setColor(d.color || 'blue'); setIconData(d.iconData || null); setIconPath(null); setConfirmRemoveImg(false); setDetail(null); setAdding(true); };
   const closeForm = () => { setAdding(false); setEditId(null); resetForm(); };
+  const formIsCustom = editId ? editMode === 'custom' : tab === 'custom';
   const submitForm = async () => {
     if (!name.trim()) return;
     setBusy(true);
-    if (editId) await api.update(editId, { name: name.trim(), color, iconData, iconPath });
-    else await api.add({ name: name.trim(), mode: tab, color, iconPath, iconData });
+    // Custom profiles get a macOS-shaped Dock icon made from the cropped image.
+    const dockIconData = formIsCustom && iconData && (iconDirty || !editId) ? await makeDockIcon(iconData) : null;
+    if (editId) {
+      const patch = { name: name.trim(), color };
+      if (iconDirty) Object.assign(patch, { iconData, iconPath }, dockIconData ? { dockIconData } : {});
+      await api.update(editId, patch);
+    } else await api.add({ name: name.trim(), mode: tab, color, iconPath, iconData, dockIconData });
     setBusy(false); closeForm(); refresh();
+  };
+  // Update a Custom profile's app: older ones also get the new macOS-shaped Dock icon.
+  const fixClone = async (it) => {
+    if (it.iconData && !it.dockIconPath) {
+      const d = await makeDockIcon(it.iconData);
+      if (d) await api.update(it.id, { dockIconData: d }); // re-applies icon + re-signs
+      if (!env || !env.version || it.claudeVersionAtBuild === env.version) { refresh(); return; }
+    }
+    await api.rebuild(it.id); refresh();
   };
   const doStop = (id) => api.stop(id).then(() => { setConfirmStop(null); setDetail(null); softRefresh(); });
   const ext = (url) => { if (api && api.openExternal) api.openExternal(url); };
@@ -317,6 +410,12 @@ export default function App() {
     if (upd.info && upd.info.blocked) return <span className="upd-note">{upd.info.blocked}</span>;
     return <button className="btn primary small" onClick={startUpdate}>Update now</button>;
   };
+  useEffect(() => {
+    let live = true;
+    if (adding && formIsCustom && iconData) makeDockIcon(iconData).then((d) => { if (live) setDockPreview(d); });
+    else setDockPreview(null);
+    return () => { live = false; };
+  }, [adding, formIsCustom, iconData]);
   const finishOnboarding = () => { setOnboard(false); setStep(0); if (api && api.setSettings) api.setSettings({ onboardingSeenVersion: appVersion || '0.1.0' }); };
 
   const rows = instances.filter((i) => i.mode === tab && !i.archived);
@@ -467,7 +566,7 @@ export default function App() {
                 const emptyMsg = q ? `No sessions match “${bridgeQuery.trim()}”.` : bridgeTab === 'new' ? 'No new sessions to import.' : bridgeTab === 'stale' ? 'No updates. Everything imported here is up to date.' : 'Nothing imported into this profile yet.';
                 return (
                   <>
-                    {bridgeResult && <div className="bridge-msg ok"><b>{bridgeResult.written || 0}</b> imported{bridgeResult.refreshed ? ', ' + bridgeResult.refreshed + ' updated' : ''}. Fully quit and reopen “{bridgeFor.name}” to see the changes.</div>}
+                    {bridgeResult && <div className="bridge-msg ok"><b>{bridgeResult.written || 0}</b> imported{bridgeResult.refreshed ? ', ' + bridgeResult.refreshed + ' updated' : ''}{bridgeResult.repaired ? ', ' + bridgeResult.repaired + ' repaired' : ''}{bridgeResult.removedDuplicates ? ', ' + bridgeResult.removedDuplicates + ' duplicate' + (bridgeResult.removedDuplicates > 1 ? 's' : '') + ' removed' : ''}. Fully quit and reopen “{bridgeFor.name}” to see the changes.</div>}
                     <div className="sess-legend">Conversations are a single shared file, so their content stays current across profiles. This only sets what “{bridgeFor.name}” shows in its sidebar.</div>
                     <div className="bridge-tabs">
                       {[['new', 'New', nNew], ['stale', 'Updates', nUpd], ['current', 'Up to date', nCur]].map(([k, l, c]) => (
@@ -509,21 +608,32 @@ export default function App() {
                             const allSel = actionable.length > 0 && actionable.every((id) => bridgeSel.has(id));
                             const collapsed = bridgeCollapsed.has(proj);
                             return (
-                              <div className="sessgroup" key={proj}>
+                              <div className={'sessgroup' + (collapsed ? ' collapsed' : '')} key={proj}>
                                 <div className="sessgroup-h">
-                                  <input type="checkbox" disabled={actionable.length === 0} checked={allSel} onChange={() => toggleGroup(actionable)} />
-                                  <button type="button" className="sessgroup-name" onClick={() => toggleCollapse(proj)} title={(list.find((x) => x.cwd) || {}).cwd || proj}>
-                                    <span className="caret">{collapsed ? '▸' : '▾'}</span><span className="sessgroup-label">{allLabels[proj]}</span>
+                                  <input type="checkbox" disabled={actionable.length === 0} checked={allSel} onChange={() => toggleGroup(actionable)} aria-label={'Select all in ' + allLabels[proj]} />
+                                  <button type="button" className="sessgroup-name" onClick={() => toggleCollapse(proj)} aria-expanded={!collapsed} title={((list.find((x) => x.cwd) || {}).cwd || proj) + (collapsed ? ' (click to expand)' : ' (click to collapse)')}>
+                                    <Chevron open={!collapsed} /><span className="sessgroup-label">{allLabels[proj]}</span>
+                                    <span className="sessgroup-count">{list.length} session{list.length === 1 ? '' : 's'}</span>
                                   </button>
-                                  <span className="sessgroup-count">{list.length}</span>
-                                  <button type="button" className="sessgroup-x" title={'Hide ' + allLabels[proj] + ' from this list'} aria-label={'Hide ' + allLabels[proj]} onClick={() => hideProject(proj, list.map((x) => x.cliSessionId))}>✕</button>
+                                  <button type="button" className="sessgroup-hide" title={'Hide ' + allLabels[proj] + ' from this import list. Nothing is deleted; bring it back from “Hidden” above.'} onClick={() => hideProject(proj, list.map((x) => x.cliSessionId))}><EyeOff /><span>Hide</span></button>
                                 </div>
-                                {!collapsed && list.map((x) => (
-                                  <label key={x.cliSessionId} className={'sess nested' + (x.status === 'current' ? ' done' : '')}>
-                                    <input type="checkbox" disabled={x.status === 'current'} checked={bridgeSel.has(x.cliSessionId)} onChange={() => toggleSel(x.cliSessionId)} />
-                                    <span className="sess-main"><span className="sess-title" title={x.title}>{x.title}</span><span className="sess-meta">{x.lastActivityAt ? new Date(x.lastActivityAt).toLocaleDateString() : ''}</span></span>
-                                  </label>
-                                ))}
+                                {!collapsed && (
+                                  <div className="sessgroup-b">
+                                    {asTree(list).map(({ x, depth }) => (
+                                      <label key={x.cliSessionId} className={'sess' + (depth ? ' child' : '') + (x.status === 'current' ? ' done' : '')} style={depth ? { '--depth': depth } : undefined}>
+                                        <input type="checkbox" disabled={x.status === 'current'} checked={bridgeSel.has(x.cliSessionId)} onChange={() => toggleSel(x.cliSessionId)} />
+                                        <span className="sess-main">
+                                          <span className="sess-title" title={x.title}>{depth ? <span className="sess-branch" aria-hidden="true">↳</span> : null}{x.title}</span>
+                                          <span className="sess-meta">
+                                            {x.lastActivityAt ? new Date(x.lastActivityAt).toLocaleDateString() : ''}
+                                            {depth ? <span className="sess-tag sub">sub-session</span> : null}
+                                            {x.repair ? <span className="sess-tag fix" title={'Imported by an older version' + (x.duplicates ? '; also removes ' + x.duplicates + ' duplicate entr' + (x.duplicates > 1 ? 'ies' : 'y') : '') + '. Updating fixes its nesting.'}>needs repair</span> : null}
+                                          </span>
+                                        </span>
+                                      </label>
+                                    ))}
+                                  </div>
+                                )}
                               </div>
                             );
                           })}
@@ -604,12 +714,18 @@ export default function App() {
                     : (name.trim() ? <Avatar color={color} name={name} lg /> : <div className="icon lg placeholder"><PhotoIcon /></div>)}
                   {pickBusy && <SpinRing />}
                 </div>
+                {formIsCustom && dockPreview && (
+                  <div className="dock-preview" title="How it will look in the Dock: same size and rounded shape as other apps">
+                    <img src={dockPreview} alt="Dock icon preview" />
+                    <span>Dock</span>
+                  </div>
+                )}
                 <div className="preview-actions">
                   {confirmRemoveImg ? (
                     <div className="rm-confirm">
                       <span>Remove this image?</span>
                       <button className="btn ghost small" onClick={() => setConfirmRemoveImg(false)}>Keep</button>
-                      <button className="btn danger small" onClick={() => { setIconData(null); setIconPath(null); setConfirmRemoveImg(false); }}>Remove</button>
+                      <button className="btn danger small" onClick={() => { setIconData(null); setIconPath(null); setIconDirty(true); setConfirmRemoveImg(false); }}>Remove</button>
                     </div>
                   ) : (
                     <>
@@ -654,7 +770,7 @@ export default function App() {
             </div>
             <div className={'status' + (it.running ? ' on' : '')}><span className="dot" />{it.running ? 'Running' : 'Stopped'}</div>
             <div className="actions" onClick={(e) => e.stopPropagation()}>
-              {it.updateAvailable && <button className="btn small amber" onClick={() => api.rebuild(it.id).then(refresh)}>Update</button>}
+              {it.updateAvailable && <button className="btn small amber" onClick={() => fixClone(it)}>Update</button>}
               {it.running ? (<><button className="btn small ghost" onClick={() => api.launch(it.id).then(refresh)}>Front</button><button className="btn small danger" onClick={() => setConfirmStop(it)}>Stop</button></>)
                 : <button className="btn small primary" onClick={() => launchAndRefresh(it.id)}>Launch</button>}
             </div>
@@ -694,7 +810,7 @@ export default function App() {
                 <div className="d-actions">
                   {detail.running ? <button className="btn primary" onClick={() => api.launch(detail.id)}>Bring to front</button> : <button className="btn primary" onClick={() => { launchAndRefresh(detail.id); setDetail(null); }}>Launch</button>}
                   {detail.running && <button className="btn danger" onClick={() => setConfirmStop(detail)}>Stop</button>}
-                  {detail.mode === 'custom' && <button className={'btn ' + (detail.updateAvailable ? 'amber' : 'ghost')} onClick={() => api.rebuild(detail.id).then(() => { setDetail(null); refresh(); })}>Rebuild</button>}
+                  {detail.mode === 'custom' && <button className={'btn ' + (detail.updateAvailable ? 'amber' : 'ghost')} onClick={() => { const it = instances.find((i) => i.id === detail.id) || detail; setDetail(null); fixClone(it); }}>Rebuild</button>}
                   <button className="btn ghost" onClick={() => { api.archive(detail.id).then(() => { setDetail(null); refresh(); }); }}>Archive</button>
                 </div>
               </>
@@ -720,7 +836,7 @@ export default function App() {
       })()}
       {BridgeModal}
       {toast && <div className="toast" role="status">{toast}</div>}
-      {cropSrc && <Cropper src={cropSrc} onCancel={() => setCropSrc(null)} onDone={(d) => { setIconData(d); setCropSrc(null); }} />}
+      {cropSrc && <Cropper src={cropSrc} onCancel={() => setCropSrc(null)} onDone={(d) => { setIconData(d); setIconDirty(true); setCropSrc(null); }} />}
       {confirmPurge && (
         <div className="overlay" onClick={() => setConfirmPurge(null)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>

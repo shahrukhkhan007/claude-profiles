@@ -12,6 +12,8 @@ function updateAvailable(inst, installedVersion) {
   if (process.platform !== 'darwin' || inst.mode !== 'custom') return false;
   // Clone signed by an older Claude Profiles (e.g. without the microphone entitlement).
   if (inst.bundlePath && (inst.signVersion || 1) < custom.SIGN_VERSION) return true;
+  // Has a picked image but no macOS-shaped Dock icon yet (made before v0.3.1).
+  if (inst.bundlePath && inst.iconData && !inst.dockIconPath) return true;
   return !!inst.claudeVersionAtBuild && !!installedVersion && inst.claudeVersionAtBuild !== installedVersion;
 }
 
@@ -47,7 +49,7 @@ function addInstance(data) {
 function updateInstance(id, patch) {
   const updated = store.update(id, patch || {});
   // If a custom profile's icon changed, re-apply it to the Dock clone.
-  if (updated && updated.mode === 'custom' && patch && (patch.iconData || patch.iconPath)) {
+  if (updated && updated.mode === 'custom' && patch && (patch.iconData || patch.iconPath || patch.dockIconData)) {
     try { custom.applyIcon(updated); } catch (_) {}
   }
   return updated;
@@ -89,12 +91,12 @@ function rebuild(id) {
   return store.update(id, custom.rebuild(it));
 }
 
-// Sidebar titles every *other* known Claude data dir shows, so an imported
-// session keeps the name it has elsewhere even if its transcript has none.
-function otherTitleHints(targetDir) {
+// The original registrations every *other* known Claude data dir holds, so an
+// imported session keeps its name, id (parent/child nesting) and metadata.
+function otherSources(targetDir) {
   const dirs = [platform.findDataDir(), ...store.list().map((i) => i.dataDir)]
     .filter((d) => d && d !== targetDir);
-  try { return bridge.titleHints([...new Set(dirs)]); } catch (_) { return {}; }
+  try { return bridge.sourceRegistrations([...new Set(dirs)]); } catch (_) { return { byCli: {}, bySessionId: {}, priorOf: {} }; }
 }
 
 async function sessionBridge(id, opts = {}) {
@@ -103,7 +105,7 @@ async function sessionBridge(id, opts = {}) {
   if (!inst || !inst.dataDir) return { ok: false, error: isMain ? 'Could not find the main Claude data folder.' : 'Profile not found' };
   const running = await launcher.isRunning(inst);
   if (running) return { ok: false, error: 'Quit this profile first. Its Claude must be fully closed before importing sessions.' };
-  return bridge.bridgeInto(inst.dataDir, { apply: !!opts.apply, only: opts.only, titleHints: otherTitleHints(inst.dataDir) });
+  return bridge.bridgeInto(inst.dataDir, { apply: !!opts.apply, only: opts.only, sources: otherSources(inst.dataDir) });
 }
 
 async function sessionList(id) {
@@ -111,7 +113,7 @@ async function sessionList(id) {
   const inst = isMain ? { id: 'main', name: 'Main Claude', dataDir: platform.findDataDir() } : store.get(id);
   if (!inst || !inst.dataDir) return { ok: false, error: isMain ? 'Could not find the main Claude data folder.' : 'Profile not found' };
   const running = await launcher.isRunning(inst);
-  const res = bridge.listSessions(inst.dataDir, { titleHints: otherTitleHints(inst.dataDir) });
+  const res = bridge.listSessions(inst.dataDir, { sources: otherSources(inst.dataDir) });
   return { ...res, running, name: inst.name };
 }
 

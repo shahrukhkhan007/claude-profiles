@@ -86,16 +86,27 @@ function launch(inst) {
       }, 3000);
       if (timer && typeof timer.unref === 'function') timer.unref();
     } else {
-      // Quick Launch: bypass LaunchServices' single-instance prohibition by
-      // running Claude's inner binary directly, so this profile gets its own
-      // isolated process instead of attaching to an already-running Claude.
+      // Quick Launch: start Claude through LaunchServices (`open -n`) so it runs
+      // as its own app. macOS then treats Claude itself as the "responsible"
+      // app for privacy prompts — it already has microphone / Desktop access —
+      // instead of asking on behalf of Claude Profiles. (Spawning the inner
+      // binary directly made us the responsible process: repeated "Claude
+      // Profiles would like to access your Desktop / Microphone" prompts.)
+      // -n forces a separate instance; the distinct --user-data-dir keeps it isolated.
       const app = platform.claudeAppPath();
-      const bin = app ? path.join(app, 'Contents', 'MacOS', 'Claude') : null;
-      if (bin && fs.existsSync(bin)) {
-        log('launch quick (direct exec):', inst.name, 'bin=', bin);
-        child = spawn(bin, [arg], { detached: true, stdio: 'ignore' });
+      if (app) {
+        log('launch quick (open -n):', inst.name, 'app=', app);
+        child = spawn('open', ['-n', '-a', app, '--args', arg], { detached: true, stdio: 'ignore' });
+        const bin = path.join(app, 'Contents', 'MacOS', 'Claude');
+        // Fallback: if LaunchServices refuses, run the inner binary directly (old behaviour).
+        if (child && typeof child.on === 'function') child.on('exit', (code) => {
+          if (code && fs.existsSync(bin)) {
+            log('open -n failed (code ' + code + '), falling back to direct exec:', inst.name);
+            spawn(bin, [arg], { detached: true, stdio: 'ignore' }).unref();
+          }
+        });
       } else {
-        log('launch quick (open fallback — inner binary not found):', inst.name);
+        log('launch quick (open fallback — Claude.app path not found):', inst.name);
         child = spawn('open', ['-n', '-a', 'Claude', '--args', arg], { detached: true, stdio: 'ignore' });
       }
     }

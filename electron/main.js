@@ -190,7 +190,16 @@ function registerIpc() {
     let dataUrl = null;
     try {
       const img = nativeImage.createFromPath(p);
-      if (img && !img.isEmpty()) dataUrl = img.resize({ width: 128, quality: 'good' }).toDataURL();
+      // Keep it sharp: the cropper outputs 1024px, so only shrink very large
+      // images (and never upscale). Was resized to 128px here, which made every
+      // avatar and Dock icon blurry.
+      if (img && !img.isEmpty()) {
+        const { width, height } = img.getSize();
+        const MAX = 2048;
+        const big = Math.max(width, height) > MAX;
+        const out = big ? img.resize(width >= height ? { width: MAX, quality: 'best' } : { height: MAX, quality: 'best' }) : img;
+        dataUrl = out.toDataURL();
+      }
     } catch (_) {}
     if (!dataUrl) {
       try {
