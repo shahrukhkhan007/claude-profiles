@@ -90,6 +90,9 @@ user's conversations.
   to 128px first → blurry avatars and Dock icons). Custom profiles also get `dockIconPath`:
   a 1024px macOS-template icon (824px rounded square + margin + shadow) drawn in the
   renderer (`makeDockIcon`), used for the clone's `.icns` so it matches other Dock icons.
+- **Import list cards need `flex: none`.** `.sesslist` is a fixed-height flex column; without
+  it, many projects shrink every card to a sliver (v0.3.1 bug). Guarded by
+  `tests-e2e/import-list.spec.mjs`.
 - Cloned apps prompt once for macOS Keychain access ("Claude Safe Storage") — expected.
 - Don't commit build output: `release/`, `dist/`, `node_modules/`, `.cp-debug.log`.
 
