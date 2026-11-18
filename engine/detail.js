@@ -4,21 +4,41 @@ const { execFileSync } = require('child_process');
 const platform = require('./platform');
 const { uddNeedle } = require('./procmatch');
 
-function pidFor(inst) {
-  if (process.env.CP_TEST) return null;
-  if (!inst || !inst.dataDir) return null; // never pgrep an empty needle (matches ALL processes)
+// Every process (main + Chromium helpers) belonging to this profile: [{ pid, args }].
+function profileProcs(inst) {
+  if (process.env.CP_TEST || !inst || !inst.dataDir) return []; // never match an empty needle
+  const re = new RegExp(uddNeedle(inst.dataDir));
   try {
     if (process.platform === 'win32') {
       const out = execFileSync('powershell', ['-NoProfile', '-Command',
-        `(Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match '${uddNeedle(inst.dataDir)}' } | Select-Object -First 1 -ExpandProperty ProcessId)`],
-        { encoding: 'utf8' });
-      const n = parseInt(String(out).trim(), 10);
-      return Number.isFinite(n) ? n : null;
+        'Get-CimInstance Win32_Process | ForEach-Object { "$($_.ProcessId)`t$($_.CommandLine)" }'], { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });
+      return parseProcs(out, '\t').filter((p) => re.test(p.args));
     }
-    const out = execFileSync('pgrep', ['-f', '--', uddNeedle(inst.dataDir)], { encoding: 'utf8' });
-    const n = parseInt(String(out).trim().split(/\s+/)[0], 10);
-    return Number.isFinite(n) ? n : null;
-  } catch (_) { return null; }
+    const out = execFileSync('ps', ['-axo', 'pid=,args='], { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });
+    return parseProcs(out, ' ').filter((p) => re.test(p.args));
+  } catch (_) { return []; }
+}
+
+function parseProcs(out, sep) {
+  const procs = [];
+  for (const line of String(out).split(/\r?\n/)) {
+    const t = line.trim();
+    if (!t) continue;
+    const i = t.indexOf(sep === '\t' ? '\t' : ' ');
+    const pid = parseInt(i === -1 ? t : t.slice(0, i), 10);
+    if (Number.isFinite(pid)) procs.push({ pid, args: i === -1 ? '' : t.slice(i + 1).trim() });
+  }
+  return procs;
+}
+
+// The app's main (browser) process: Chromium helpers carry a --type=… flag.
+function mainProc(procs) {
+  return (procs || []).find((p) => !/(^|\s)--type=/.test(p.args)) || null;
+}
+
+function pidFor(inst) {
+  const main = mainProc(profileProcs(inst));
+  return main ? main.pid : null;
 }
 
 function liveStats(pid) {
@@ -69,18 +89,39 @@ function reveal(inst) {
 }
 
 // Quit this profile's running instance. The profile (its data dir) stays; it can be relaunched.
-function stop(inst) {
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Quit a profile the way the user quitting it would: ask ONLY the main process
+// to quit, so Claude flushes its cookie store (the login) and local storage,
+// then wait. Killing every process at once (the old `pkill -f`) also killed
+// the network-service helper that holds unflushed cookies, which could throw
+// away a just-refreshed login and leave a stale one that claude.ai rejects →
+// logged out on the next launch. Force-kill only what is left after the wait.
+async function stop(inst, opts = {}) {
   if (process.env.CP_TEST) return { ok: true, test: true };
-  if (!inst || !inst.dataDir) return { ok: false }; // never pkill an empty needle
-  try {
-    if (process.platform === 'win32') {
-      execFileSync('powershell', ['-NoProfile', '-Command',
-        `Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match '${uddNeedle(inst.dataDir)}' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }`]);
-    } else {
-      execFileSync('pkill', ['-f', '--', uddNeedle(inst.dataDir)]);
-    }
-  } catch (_) {}
-  return { ok: true };
+  if (!inst || !inst.dataDir) return { ok: false }; // never match an empty needle
+  const graceMs = opts.graceMs == null ? 8000 : opts.graceMs;
+  const kill = opts.kill || ((pid, sig) => { try { process.kill(pid, sig); } catch (_) {} });
+  const list = opts.list || (() => profileProcs(inst));
+  const winClose = (pid, force) => { try { execFileSync('taskkill', force ? ['/PID', String(pid), '/T', '/F'] : ['/PID', String(pid), '/T']); } catch (_) {} };
+  const isWin = (opts.platform || process.platform) === 'win32';
+
+  let procs = list();
+  if (!procs.length) return { ok: true, graceful: true, wasRunning: false };
+  const main = mainProc(procs);
+  if (main) { if (isWin) winClose(main.pid, false); else kill(main.pid, 'SIGTERM'); }
+  else for (const p of procs) { if (isWin) winClose(p.pid, false); else kill(p.pid, 'SIGTERM'); }
+
+  for (let waited = 0; waited < graceMs; waited += 250) {
+    await sleep(250);
+    procs = list();
+    if (!procs.length) return { ok: true, graceful: true, wasRunning: true };
+  }
+  // Still running (hung or busy): end what's left.
+  for (const p of procs) { if (isWin) winClose(p.pid, true); else kill(p.pid, 'SIGTERM'); }
+  await sleep(1500);
+  for (const p of list()) if (!isWin) kill(p.pid, 'SIGKILL');
+  return { ok: true, graceful: false, wasRunning: true };
 }
 
-module.exports = { detail, bringToFront, reveal, stop, pidFor };
+module.exports = { detail, bringToFront, reveal, stop, pidFor, profileProcs, mainProc, parseProcs };

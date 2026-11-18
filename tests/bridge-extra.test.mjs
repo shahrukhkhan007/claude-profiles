@@ -48,9 +48,9 @@ test('selective import writes only the chosen sessions', () => {
   assert.ok(!regs.some((x) => x.cliSessionId === 'sess-b'), 'sess-b not imported');
 });
 
-test('archive then restore flips the archived flag (simple profile)', () => {
+test('archive then restore flips the archived flag (simple profile)', async () => {
   const inst = store.add({ name: 'ArchMe', mode: 'simple', color: 'blue' });
-  engine.archiveInstance(inst.id);
+  await engine.archiveInstance(inst.id); // async: waits for a graceful stop
   let got = store.get(inst.id);
   assert.equal(got.archived, true);
   assert.ok(got.archivedAt);

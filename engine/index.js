@@ -55,8 +55,9 @@ function updateInstance(id, patch) {
   return updated;
 }
 
-function removeInstance(id, keepData) {
+async function removeInstance(id, keepData) {
   const inst = store.get(id);
+  if (inst) { try { await info.stop(inst); } catch (_) {} } // quit cleanly before removing anything
   // The app clone / shortcut is always removed; keepData only controls the data dir.
   if (inst && inst.mode === 'custom') { try { custom.remove(inst); } catch (_) {} }
   return store.remove(id, keepData);
@@ -82,7 +83,7 @@ function getDetail(id) {
 }
 
 function bringToFront(id) { const it = store.get(id); return it ? info.bringToFront(it) : { ok: false }; }
-function stop(id) { const it = store.get(id); return it ? info.stop(it) : { ok: false }; }
+async function stop(id) { const it = store.get(id); return it ? info.stop(it) : { ok: false }; }
 function reveal(id) { const it = store.get(id); return it ? info.reveal(it) : { ok: false }; }
 
 function rebuild(id) {
@@ -117,10 +118,10 @@ async function sessionList(id) {
   return { ...res, running, name: inst.name };
 }
 
-function archiveInstance(id) {
+async function archiveInstance(id) {
   const it = store.get(id);
   if (!it) return { ok: false };
-  try { info.stop(it); } catch (_) {}
+  try { await info.stop(it); } catch (_) {} // graceful: keeps the login intact
   if (it.mode === 'custom') { try { custom.remove(it); } catch (_) {} }
   return store.update(id, { archived: true, archivedAt: new Date().toISOString(), bundlePath: null });
 }
