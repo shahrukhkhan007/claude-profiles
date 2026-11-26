@@ -90,6 +90,14 @@ user's conversations.
   to 128px first → blurry avatars and Dock icons). Custom profiles also get `dockIconPath`:
   a 1024px macOS-template icon (824px rounded square + margin + shadow) drawn in the
   renderer (`makeDockIcon`), used for the clone's `.icns` so it matches other Dock icons.
+- **Import list cards need `flex: none`.** `.sesslist` is a fixed-height flex column; without
+  it, many projects shrink every card to a sliver (v0.3.1 bug). Guarded by
+  `tests-e2e/import-list.spec.mjs`.
+- **Never stop a profile with `pkill -f <data dir>`** (or `Stop-Process -Force`). That also
+  kills Claude's network-service helper, losing unflushed cookies — a just-refreshed login —
+  so claude.ai rejects the stale one (403) and the profile is logged out on next launch.
+  `detail.stop()` asks only the main process (no `--type=` flag) to quit, waits, and forces
+  only what's left. Covered by `tests/stop.test.mjs`.
 - Cloned apps prompt once for macOS Keychain access ("Claude Safe Storage") — expected.
 - Don't commit build output: `release/`, `dist/`, `node_modules/`, `.cp-debug.log`.
 

@@ -165,7 +165,7 @@ function registerIpc() {
   ipcMain.handle('env:info', () => engine.envInfo());
   ipcMain.handle('instances:list', () => engine.listInstances());
   ipcMain.handle('instances:add', async (_e, data) => { const r = engine.addInstance(data); refreshTray(); return r; });
-  ipcMain.handle('instances:remove', async (_e, arg) => { const id = arg && typeof arg === 'object' ? arg.id : arg; const keepData = arg && typeof arg === 'object' ? !!arg.keepData : false; const r = engine.removeInstance(id, keepData); refreshTray(); return r; });
+  ipcMain.handle('instances:remove', async (_e, arg) => { const id = arg && typeof arg === 'object' ? arg.id : arg; const keepData = arg && typeof arg === 'object' ? !!arg.keepData : false; const r = await engine.removeInstance(id, keepData); refreshTray(); return r; });
   ipcMain.handle('instances:launch', async (_e, id) => { const r = await engine.launch(id); refreshTray(); return r; });
   ipcMain.handle('instances:rebuild', async (_e, id) => { const r = engine.rebuild(id); refreshTray(); return r; });
   ipcMain.handle('instances:status', (_e, id) => engine.status(id));
@@ -173,11 +173,11 @@ function registerIpc() {
   ipcMain.handle('instances:bridgePreview', (_e, id) => engine.sessionBridge(id, { apply: false }));
   ipcMain.handle('instances:bridgeApply', async (_e, arg) => { const id = arg && typeof arg === 'object' ? arg.id : arg; const only = arg && typeof arg === 'object' ? arg.only : null; const r = await engine.sessionBridge(id, { apply: true, only }); refreshTray(); return r; });
   ipcMain.handle('instances:sessionList', (_e, id) => engine.sessionList(id));
-  ipcMain.handle('instances:archive', async (_e, id) => { const r = engine.archiveInstance(id); refreshTray(); return r; });
+  ipcMain.handle('instances:archive', async (_e, id) => { const r = await engine.archiveInstance(id); refreshTray(); return r; });
   ipcMain.handle('instances:restore', async (_e, id) => { const r = engine.restoreInstance(id); refreshTray(); return r; });
   ipcMain.handle('instances:front', (_e, id) => engine.bringToFront(id));
   ipcMain.handle('instances:reveal', (_e, id) => engine.reveal(id));
-  ipcMain.handle('instances:stop', async (_e, id) => { const r = engine.stop(id); refreshTray(); return r; });
+  ipcMain.handle('instances:stop', async (_e, id) => { const r = await engine.stop(id); refreshTray(); return r; });
   ipcMain.handle('dialog:pickIcon', async () => {
     const parent = win && !win.isDestroyed() ? win : undefined;
     const r = await dialog.showOpenDialog(parent, {
